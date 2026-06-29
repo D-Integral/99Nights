@@ -6,39 +6,41 @@
 //
 
 import UIKit
-import SpriteKit
-import GameplayKit
+import SceneKit
 
 class GameViewController: UIViewController {
 
+    private var scnView: SCNView!
+    private var world: GameWorld?
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        // Load 'GameScene.sks' as a GKScene. This provides gameplay related content
-        // including entities and graphs.
-        if let scene = GKScene(fileNamed: "GameScene") {
-            
-            // Get the SKScene from the loaded GKScene
-            if let sceneNode = scene.rootNode as! GameScene? {
-                
-                // Copy gameplay related content over to the scene
-                sceneNode.entities = scene.entities
-                sceneNode.graphs = scene.graphs
-                
-                // Set the scale mode to scale to fit the window
-                sceneNode.scaleMode = .aspectFill
-                
-                // Present the scene
-                if let view = self.view as! SKView? {
-                    view.presentScene(sceneNode)
-                    
-                    view.ignoresSiblingOrder = true
-                    
-                    view.showsFPS = true
-                    view.showsNodeCount = true
-                }
-            }
-        }
+
+        scnView = SCNView(frame: view.bounds)
+        scnView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scnView.backgroundColor = .black
+        scnView.antialiasingMode = .multisampling2X
+        scnView.isPlaying = true              // keep the render loop running
+        scnView.rendersContinuously = true
+        view.addSubview(scnView)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard world == nil else { return }
+
+        let game = GameWorld(viewSize: scnView.bounds.size)
+        scnView.scene = game.scene
+        scnView.overlaySKScene = game.hud
+        world = game
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        scnView.addGestureRecognizer(tap)
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        let point = gesture.location(in: scnView)
+        world?.handleTap(at: point, in: scnView)
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
