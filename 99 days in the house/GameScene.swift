@@ -34,15 +34,89 @@ enum GamePhase {
     case win
 }
 
+struct DifficultyConfig {
+    let name: String
+    let blurb: String
+    let maxHealth: Int
+    let startFood: Int
+    let startWood: Int
+    let attackPower: Int
+    let redGodHP: Int
+    let demonHP: Int
+    let enemySpeedMultiplier: Float
+    let wolfDamage: Int
+    let campfireDamage: Int
+    let dayDuration: TimeInterval
+    let nightDuration: TimeInterval
+    let animalSpawn: ClosedRange<Double>
+    let demonSpawn: ClosedRange<Double>
+    let redGodRespawnDelay: TimeInterval
+}
+
+enum Difficulty: Int, CaseIterable {
+    case easy, medium, difficult, insane, king
+
+    var config: DifficultyConfig {
+        switch self {
+        case .easy:
+            return DifficultyConfig(
+                name: "Easy", blurb: "relaxed, lots of food",
+                maxHealth: 7, startFood: 6, startWood: 10, attackPower: 2,
+                redGodHP: 4, demonHP: 1, enemySpeedMultiplier: 0.75,
+                wolfDamage: 1, campfireDamage: 2,
+                dayDuration: 130, nightDuration: 70,
+                animalSpawn: 0.9...1.8, demonSpawn: 4.5...7.0,
+                redGodRespawnDelay: 3.0)
+        case .medium:
+            return DifficultyConfig(
+                name: "Medium", blurb: "a fair fight",
+                maxHealth: 5, startFood: 3, startWood: 4, attackPower: 1,
+                redGodHP: 6, demonHP: 2, enemySpeedMultiplier: 1.0,
+                wolfDamage: 1, campfireDamage: 1,
+                dayDuration: 120, nightDuration: 90,
+                animalSpawn: 1.2...2.4, demonSpawn: 3.0...5.0,
+                redGodRespawnDelay: 1.8)
+        case .difficult:
+            return DifficultyConfig(
+                name: "Difficult", blurb: "tough enemies",
+                maxHealth: 5, startFood: 2, startWood: 2, attackPower: 1,
+                redGodHP: 8, demonHP: 3, enemySpeedMultiplier: 1.2,
+                wolfDamage: 1, campfireDamage: 1,
+                dayDuration: 110, nightDuration: 95,
+                animalSpawn: 1.6...3.0, demonSpawn: 2.2...3.8,
+                redGodRespawnDelay: 1.3)
+        case .insane:
+            return DifficultyConfig(
+                name: "Insane", blurb: "brutal",
+                maxHealth: 4, startFood: 1, startWood: 0, attackPower: 1,
+                redGodHP: 10, demonHP: 3, enemySpeedMultiplier: 1.4,
+                wolfDamage: 1, campfireDamage: 1,
+                dayDuration: 100, nightDuration: 100,
+                animalSpawn: 2.0...3.6, demonSpawn: 1.6...2.8,
+                redGodRespawnDelay: 1.0)
+        case .king:
+            return DifficultyConfig(
+                name: "King", blurb: "nearly impossible",
+                maxHealth: 3, startFood: 1, startWood: 0, attackPower: 1,
+                redGodHP: 12, demonHP: 4, enemySpeedMultiplier: 1.65,
+                wolfDamage: 2, campfireDamage: 1,
+                dayDuration: 95, nightDuration: 110,
+                animalSpawn: 2.5...4.2, demonSpawn: 1.1...2.2,
+                redGodRespawnDelay: 0.8)
+        }
+    }
+}
+
 final class GameWorld: NSObject {
 
     // MARK: - Tunables
     private let maxDays = 99
+    private var config = Difficulty.medium.config
     private var maxHealth = 5
-    private let dayDuration: TimeInterval = 120     // 2:00
-    private let nightDuration: TimeInterval = 90    // 1:30
-    private let redGodMaxHP = 6
-    private let demonMaxHP = 2
+    private var dayDuration: TimeInterval = 120     // 2:00
+    private var nightDuration: TimeInterval = 90    // 1:30
+    private var redGodMaxHP = 6
+    private var demonMaxHP = 2
 
     // Nights where little demons raid the house.
     private let raidNights: Set<Int> = [3, 11, 24, 46, 50, 55, 61, 77, 89, 99]
@@ -114,6 +188,7 @@ final class GameWorld: NSObject {
     private let craftMenu = SKNode()
     private let craftSpearLabel = SKLabelNode(fontNamed: "AvenirNext-Medium")
     private let craftReinforceLabel = SKLabelNode(fontNamed: "AvenirNext-Medium")
+    private let difficultyButtons = SKNode()
     private var viewSize: CGSize
 
     // MARK: - Init
@@ -592,7 +667,26 @@ final class GameWorld: NSObject {
         overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
         overlay.addChild(overlaySub)
 
+        buildDifficultyButtons()
+        overlay.addChild(difficultyButtons)
+
         hud.addChild(overlay)
+    }
+
+    private func buildDifficultyButtons() {
+        let cases = Difficulty.allCases
+        let topY = viewSize.height * 0.60
+        let step = viewSize.height * 0.095
+        for (i, diff) in cases.enumerated() {
+            let c = diff.config
+            let y = topY - CGFloat(i) * step
+            let btn = makeButton(name: "diff_\(diff.rawValue)",
+                                 at: CGPoint(x: viewSize.width / 2, y: y), label: nil)
+            if let lbl = btn.childNode(withName: "label") as? SKLabelNode {
+                lbl.text = "\(c.name) — \(c.blurb)"
+            }
+            difficultyButtons.addChild(btn)
+        }
     }
 
     private func updateHUD() {
@@ -628,37 +722,42 @@ final class GameWorld: NSObject {
     private func showTitle() {
         phase = .title
         overlay.isHidden = false
+        difficultyButtons.isHidden = false
         setJoystickVisible(false)
-        overlayTitle.text = "99 DAYS\nIN THE HOUSE"
-        overlaySub.text = """
-        Joystick to run. Tap trees to chop 🪵.
-        Tap the campfire to evolve it 🔥.
-        Tap the table to craft. Hunt 🍖 by day.
-        Fight the Red God & raid demons by night.
-
-        Tap to begin.
-        """
+        overlayTitle.text = "99 DAYS IN THE HOUSE"
+        overlayTitle.fontSize = 28
+        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.86)
+        overlaySub.text = "Joystick to run · chop 🪵 · evolve 🔥 · craft 🛠\nHunt 🍖 by day, fight by night.\n\nChoose your difficulty:"
+        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.72)
         updateHUD()
     }
 
-    private func startGame() {
+    private func startGame(_ difficulty: Difficulty) {
+        config = difficulty.config
+        maxHealth = config.maxHealth
+        dayDuration = config.dayDuration
+        nightDuration = config.nightDuration
+        redGodMaxHP = config.redGodHP
+        demonMaxHP = config.demonHP
+
         day = 1
         health = maxHealth
-        food = 3
-        wood = 0
-        attackPower = 1
+        food = config.startFood
+        wood = config.startWood
+        attackPower = config.attackPower
         campfireLevel = 1
         updateCampfireVisual()
+
+        clearEnemies()
+        removeAllAnimals()
+        regrowAllTrees()
+        closeCraftMenu()
         playerNode.position = SCNVector3(0, 0, 4)
+
         overlay.isHidden = true
+        difficultyButtons.isHidden = true
         setJoystickVisible(true)
         startDay()
-    }
-
-    private func restartGame() {
-        clearEnemies()
-        regrowAllTrees()
-        startGame()
     }
 
     // MARK: - Day phase
@@ -683,7 +782,7 @@ final class GameWorld: NSObject {
 
     private func scheduleSpawn() {
         guard phase == .day else { return }
-        let wait = SCNAction.wait(duration: Double.random(in: 1.2...2.4))
+        let wait = SCNAction.wait(duration: Double.random(in: config.animalSpawn))
         let run = SCNAction.run { [weak self] _ in
             self?.spawnAnimal()
             self?.scheduleSpawn()
@@ -704,7 +803,8 @@ final class GameWorld: NSObject {
         let move = SCNAction.move(to: SCNVector3(x, 0, frontZ), duration: speed)
         move.timingMode = .linear
         if isWolf {
-            let bite = SCNAction.run { [weak self] _ in self?.changeHealth(-1) }
+            let dmg = config.wolfDamage
+            let bite = SCNAction.run { [weak self] _ in self?.changeHealth(-dmg) }
             node.runAction(SCNAction.sequence([move, bite, .removeFromParentNode()]))
         } else {
             node.runAction(SCNAction.sequence([move, .removeFromParentNode()]))
@@ -842,12 +942,12 @@ final class GameWorld: NSObject {
             .scale(to: 1.1, duration: 0.5),
             .scale(to: 1.0, duration: 0.5)
         ])), forKey: "pulse")
-        marchEnemy(god, speed: 2.6)
+        marchEnemy(god, speed: 2.6 * config.enemySpeedMultiplier)
     }
 
     private func scheduleDemonSpawn() {
         guard phase == .night, isRaidNight(day) else { return }
-        let wait = SCNAction.wait(duration: Double.random(in: 2.5...4.5))
+        let wait = SCNAction.wait(duration: Double.random(in: config.demonSpawn))
         let run = SCNAction.run { [weak self] _ in
             self?.spawnDemon()
             self?.scheduleDemonSpawn()
@@ -862,7 +962,7 @@ final class GameWorld: NSObject {
         demon.position = SCNVector3(x, 0, spawnZ)
         scene.rootNode.addChildNode(demon)
         enemyHP[demon] = demonMaxHP
-        marchEnemy(demon, speed: Float.random(in: 3.2...4.2))
+        marchEnemy(demon, speed: Float.random(in: 3.2...4.2) * config.enemySpeedMultiplier)
     }
 
     private func marchEnemy(_ node: SCNNode, speed: Float) {
@@ -899,7 +999,7 @@ final class GameWorld: NSObject {
             floatText("REPELLED!", color: .green)
             if phase == .night {
                 scene.rootNode.runAction(SCNAction.sequence([
-                    SCNAction.wait(duration: 1.5),
+                    SCNAction.wait(duration: config.redGodRespawnDelay),
                     SCNAction.run { [weak self] _ in self?.spawnRedGod() }
                 ]))
             }
@@ -925,7 +1025,7 @@ final class GameWorld: NSObject {
         node.removeFromParentNode()
         if isRedGod && phase == .night {
             scene.rootNode.runAction(SCNAction.sequence([
-                SCNAction.wait(duration: 1.0),
+                SCNAction.wait(duration: config.redGodRespawnDelay),
                 SCNAction.run { [weak self] _ in self?.spawnRedGod() }
             ]))
         }
@@ -953,7 +1053,7 @@ final class GameWorld: NSObject {
 
     private func hitEnemyFromFire(_ node: SCNNode) {
         guard let hp = enemyHP[node] else { return }
-        let newHP = hp - 1
+        let newHP = hp - config.campfireDamage
         enemyHP[node] = newHP
         if newHP <= 0 { killEnemy(node, byPlayer: false) }
     }
@@ -1100,8 +1200,12 @@ final class GameWorld: NSObject {
         setJoystickVisible(false)
         updateHUD()
         overlay.isHidden = false
+        difficultyButtons.isHidden = true
+        overlayTitle.fontSize = 38
+        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 + 40)
         overlayTitle.text = "YOU DIED"
-        overlaySub.text = "The house fell on day \(day).\n\nTap to try again."
+        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
+        overlaySub.text = "The house fell on day \(day) (\(config.name)).\n\nTap to choose difficulty."
     }
 
     private func win() {
@@ -1109,8 +1213,12 @@ final class GameWorld: NSObject {
         setJoystickVisible(false)
         updateHUD()
         overlay.isHidden = false
+        difficultyButtons.isHidden = true
+        overlayTitle.fontSize = 38
+        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 + 40)
         overlayTitle.text = "YOU SURVIVED!"
-        overlaySub.text = "99 days. The Red God is defeated.\n\nTap to play again."
+        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
+        overlaySub.text = "99 days on \(config.name)! The Red God is defeated.\n\nTap to play again."
     }
 
     // MARK: - HUD effects
@@ -1227,10 +1335,18 @@ final class GameWorld: NSObject {
     func handleTap(at viewPoint: CGPoint, in view: SCNView) {
         switch phase {
         case .title:
-            startGame()
+            let hp = hud.convertPoint(fromView: viewPoint)
+            for node in hud.nodes(at: hp) {
+                if let name = node.name, name.hasPrefix("diff_"),
+                   let raw = Int(name.dropFirst(5)),
+                   let diff = Difficulty(rawValue: raw) {
+                    startGame(diff)
+                    return
+                }
+            }
             return
         case .gameOver, .win:
-            restartGame()
+            showTitle()
             return
         case .day, .night:
             break
