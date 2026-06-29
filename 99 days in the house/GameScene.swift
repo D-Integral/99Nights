@@ -4,22 +4,18 @@
 //
 //  Created by Dmytro Skorokhod on 29.06.2026.
 //
-//  3D game (SceneKit). Survive 99 days.
+//  3D survival game (SceneKit). Survive 99 days and save 4 kids.
 //
-//  CONTROLS
-//  - Left joystick: run around the field.
-//  - Tap a tree (stand close): chop wood 🪵.
-//  - Tap the campfire (stand close): feed wood to evolve it 🔥.
-//  - Tap the crafting table (stand close): open the crafting menu.
-//  - Tap bunnies / wolves by day for food 🍖.
-//  - Tap the Red God / demons by night to drive them back.
+//  THE PERSON has 100 lives. Enemies now hunt YOU (not the house):
+//    🐺 wolf  -10 · 🐺(red eyes) angry wolf -40 · 👿 demon -15 · 👹 Red God -60
+//  Run with the joystick to dodge, tap enemies to fight back.
 //
-//  DAY (2:00): roam, hunt, chop wood, craft. WOLVES that reach the house bite.
-//  NIGHT (1:30): the Red God comes. On RAID nights little demons swarm the house.
-//  A bigger campfire burns nearby enemies. Each night you eat 1 food or starve.
+//  DAY: hunt 🐰 bunnies (food + 🐾 bunny foot), chop 🌲 trees (🪵), mine 🪨 rocks
+//       (🔩 metal), rescue 🧒 kids, open 💰 treasures, craft, and meet the trader.
+//  NIGHT: the Red God + wolves come; raid nights add demons. The campfire burns
+//       nearby enemies. With no 🍖 food you starve and lose lives.
 //
-//  Everything is built from SceneKit primitives, so no 3D model assets are
-//  needed. A SpriteKit scene is used as an overlay for the HUD / menus.
+//  Build everything from SceneKit primitives — no 3D model assets needed.
 //
 
 import SceneKit
@@ -37,14 +33,14 @@ enum GamePhase {
 struct DifficultyConfig {
     let name: String
     let blurb: String
-    let maxHealth: Int
     let startFood: Int
     let startWood: Int
+    let startMetal: Int
     let attackPower: Int
     let redGodHP: Int
     let demonHP: Int
     let enemySpeedMultiplier: Float
-    let wolfDamage: Int
+    let damageTaken: Float
     let campfireDamage: Int
     let dayDuration: TimeInterval
     let nightDuration: TimeInterval
@@ -59,76 +55,74 @@ enum Difficulty: Int, CaseIterable {
     var config: DifficultyConfig {
         switch self {
         case .easy:
-            return DifficultyConfig(
-                name: "Easy", blurb: "relaxed, lots of food",
-                maxHealth: 7, startFood: 6, startWood: 10, attackPower: 2,
-                redGodHP: 4, demonHP: 1, enemySpeedMultiplier: 0.75,
-                wolfDamage: 1, campfireDamage: 2,
-                dayDuration: 130, nightDuration: 70,
-                animalSpawn: 0.9...1.8, demonSpawn: 4.5...7.0,
-                redGodRespawnDelay: 3.0)
+            return DifficultyConfig(name: "Easy", blurb: "relaxed",
+                startFood: 6, startWood: 10, startMetal: 3, attackPower: 2,
+                redGodHP: 4, demonHP: 1, enemySpeedMultiplier: 0.7, damageTaken: 0.5,
+                campfireDamage: 2, dayDuration: 130, nightDuration: 70,
+                animalSpawn: 0.9...1.8, demonSpawn: 4.5...7.0, redGodRespawnDelay: 3.0)
         case .medium:
-            return DifficultyConfig(
-                name: "Medium", blurb: "a fair fight",
-                maxHealth: 5, startFood: 3, startWood: 4, attackPower: 1,
-                redGodHP: 6, demonHP: 2, enemySpeedMultiplier: 1.0,
-                wolfDamage: 1, campfireDamage: 1,
-                dayDuration: 120, nightDuration: 90,
-                animalSpawn: 1.2...2.4, demonSpawn: 3.0...5.0,
-                redGodRespawnDelay: 1.8)
+            return DifficultyConfig(name: "Medium", blurb: "a fair fight",
+                startFood: 3, startWood: 4, startMetal: 0, attackPower: 1,
+                redGodHP: 6, demonHP: 2, enemySpeedMultiplier: 1.0, damageTaken: 1.0,
+                campfireDamage: 1, dayDuration: 120, nightDuration: 90,
+                animalSpawn: 1.2...2.4, demonSpawn: 3.0...5.0, redGodRespawnDelay: 1.8)
         case .difficult:
-            return DifficultyConfig(
-                name: "Difficult", blurb: "tough enemies",
-                maxHealth: 5, startFood: 2, startWood: 2, attackPower: 1,
-                redGodHP: 8, demonHP: 3, enemySpeedMultiplier: 1.2,
-                wolfDamage: 1, campfireDamage: 1,
-                dayDuration: 110, nightDuration: 95,
-                animalSpawn: 1.6...3.0, demonSpawn: 2.2...3.8,
-                redGodRespawnDelay: 1.3)
+            return DifficultyConfig(name: "Difficult", blurb: "tough enemies",
+                startFood: 2, startWood: 2, startMetal: 0, attackPower: 1,
+                redGodHP: 8, demonHP: 3, enemySpeedMultiplier: 1.2, damageTaken: 1.2,
+                campfireDamage: 1, dayDuration: 110, nightDuration: 95,
+                animalSpawn: 1.6...3.0, demonSpawn: 2.2...3.8, redGodRespawnDelay: 1.3)
         case .insane:
-            return DifficultyConfig(
-                name: "Insane", blurb: "brutal",
-                maxHealth: 4, startFood: 1, startWood: 0, attackPower: 1,
-                redGodHP: 10, demonHP: 3, enemySpeedMultiplier: 1.4,
-                wolfDamage: 1, campfireDamage: 1,
-                dayDuration: 100, nightDuration: 100,
-                animalSpawn: 2.0...3.6, demonSpawn: 1.6...2.8,
-                redGodRespawnDelay: 1.0)
+            return DifficultyConfig(name: "Insane", blurb: "brutal",
+                startFood: 1, startWood: 0, startMetal: 0, attackPower: 1,
+                redGodHP: 10, demonHP: 3, enemySpeedMultiplier: 1.4, damageTaken: 1.4,
+                campfireDamage: 1, dayDuration: 100, nightDuration: 100,
+                animalSpawn: 2.0...3.6, demonSpawn: 1.6...2.8, redGodRespawnDelay: 1.0)
         case .king:
-            return DifficultyConfig(
-                name: "King", blurb: "nearly impossible",
-                maxHealth: 3, startFood: 1, startWood: 0, attackPower: 1,
-                redGodHP: 12, demonHP: 4, enemySpeedMultiplier: 1.65,
-                wolfDamage: 2, campfireDamage: 1,
-                dayDuration: 95, nightDuration: 110,
-                animalSpawn: 2.5...4.2, demonSpawn: 1.1...2.2,
-                redGodRespawnDelay: 0.8)
+            return DifficultyConfig(name: "King", blurb: "nearly impossible",
+                startFood: 1, startWood: 0, startMetal: 0, attackPower: 1,
+                redGodHP: 12, demonHP: 4, enemySpeedMultiplier: 1.6, damageTaken: 1.6,
+                campfireDamage: 1, dayDuration: 95, nightDuration: 110,
+                animalSpawn: 2.5...4.2, demonSpawn: 1.1...2.2, redGodRespawnDelay: 0.8)
         }
     }
 }
 
 final class GameWorld: NSObject {
 
+    // A hostile that chases the player.
+    private final class Enemy {
+        let node: SCNNode
+        var hp: Int
+        let speed: Float
+        let damage: Int
+        let kind: String        // "wolf", "angryWolf", "demon", "redgod"
+        init(node: SCNNode, hp: Int, speed: Float, damage: Int, kind: String) {
+            self.node = node; self.hp = hp; self.speed = speed
+            self.damage = damage; self.kind = kind
+        }
+    }
+
     // MARK: - Tunables
     private let maxDays = 99
+    private let maxLives = 100
+    private let wolfDamage = 10
+    private let angryWolfDamage = 40
+    private let demonDamage = 15
+    private let redGodDamage = 60
+    private let wolfHP = 2
+    private let angryWolfHP = 4
+    private let attackRange: Float = 1.9
+
     private var config = Difficulty.medium.config
-    private var maxHealth = 5
-    private var dayDuration: TimeInterval = 120     // 2:00
-    private var nightDuration: TimeInterval = 90    // 1:30
-    private var redGodMaxHP = 6
-    private var demonMaxHP = 2
 
-    // Nights where little demons raid the house.
     private let raidNights: Set<Int> = [3, 11, 24, 46, 50, 55, 61, 77, 89, 99]
+    private let merchantDays: Set<Int> = [2, 4, 6, 18, 28, 38, 48, 58, 68, 78, 88, 98]
 
-    private let houseZ: Float = 12
-    private let frontZ: Float = 8.5     // where enemies reach the house
+    private let frontZ: Float = 8.5
     private let spawnZ: Float = -18
-
-    // Field bounds the player can run within.
     private let minX: Float = -13, maxX: Float = 13
     private let minZ: Float = -15, maxZ: Float = 10
-
     private let interactRange: Float = 4.0
     private let playerSpeed: Float = 8.5
 
@@ -139,56 +133,79 @@ final class GameWorld: NSObject {
     // MARK: - State
     private(set) var phase: GamePhase = .title
     private var day = 1
-    private var health = 5
+    private var lives = 100
     private var food = 3
     private var wood = 0
+    private var metal = 0
+    private var bunnyFeet = 0
+    private var kidsSaved = 0
     private var attackPower = 1
     private var campfireLevel = 1
     private let maxCampfireLevel = 6
+
+    // Tools / upgrades
+    private var hasAxe = false
+    private var hasBag = false
+    private var hasKatana = false
+    private var hasBed = false
+    private var hasMap = false
+    private var hasWolfCover = false
+    private var bedUsedToday = false
 
     private var phaseTimeRemaining: TimeInterval = 0
     private var lastTick = Date()
     private var timer: Timer?
     private var campfireAoeAccumulator: TimeInterval = 0
+    private var hungerAccumulator: TimeInterval = 0
 
     // MARK: - 3D nodes
     private let cameraNode = SCNNode()
     private let sunLight = SCNLight()
     private let ambientLight = SCNLight()
     private var groundMaterial: SCNMaterial?
+    private var groundNode: SCNNode?
     private var houseNode: SCNNode?
     private let playerNode = SCNNode()
     private var campfireNode: SCNNode?
     private var flameNode: SCNNode?
     private var campLight: SCNLight?
     private var craftTableNode: SCNNode?
+    private var merchantNode: SCNNode?
+    private var bedNode: SCNNode?
 
-    private var enemyHP: [SCNNode: Int] = [:]
+    private var enemies: [Enemy] = []
     private var treeChops: [SCNNode: Int] = [:]
+    private var rockMetal: [SCNNode: Int] = [:]
+    private var kidNodes: [SCNNode] = []
+    private var treasureNodes: [SCNNode] = []
 
     // MARK: - Input state
     private var moveVec = CGVector(dx: 0, dy: 0)
-    private let joystickCenter = CGPoint(x: 95, y: 95)   // HUD coords (origin bottom-left)
+    private let joystickCenter = CGPoint(x: 95, y: 95)
     private let joystickRadius: CGFloat = 60
     private let joystickActivation: CGFloat = 100
     private var craftingMenuOpen = false
 
     // MARK: - HUD nodes
     private let hudDay = SKLabelNode(fontNamed: "AvenirNext-Bold")
+    private let hudVit = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private let hudRes = SKLabelNode(fontNamed: "AvenirNext-Bold")
-    private let hudStats = SKLabelNode(fontNamed: "AvenirNext-Bold")
+    private let hudGear = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private let hudPhase = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private let hudTimer = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private let overlay = SKNode()
     private let overlayTitle = SKLabelNode(fontNamed: "AvenirNext-Heavy")
     private let overlaySub = SKLabelNode(fontNamed: "AvenirNext-Medium")
+    private let authorLabel = SKLabelNode(fontNamed: "AvenirNext-Medium")
     private var damageFlash: SKShapeNode?
     private let joystickBase = SKShapeNode(circleOfRadius: 60)
     private let joystickKnob = SKShapeNode(circleOfRadius: 28)
     private let craftMenu = SKNode()
-    private let craftSpearLabel = SKLabelNode(fontNamed: "AvenirNext-Medium")
-    private let craftReinforceLabel = SKLabelNode(fontNamed: "AvenirNext-Medium")
     private let difficultyButtons = SKNode()
+    private var craftLabels: [String: SKLabelNode] = [:]
+    private let campBarBG = SKShapeNode(rectOf: CGSize(width: 150, height: 12), cornerRadius: 6)
+    private let campBarFill = SKShapeNode()
+    private let campBarLabel = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private var viewSize: CGSize
 
     // MARK: - Init
@@ -196,7 +213,6 @@ final class GameWorld: NSObject {
         self.viewSize = viewSize
         self.hud = SKScene(size: viewSize)
         super.init()
-
         buildWorld()
         buildHUD()
         showTitle()
@@ -220,7 +236,6 @@ final class GameWorld: NSObject {
         scene.rootNode.addChildNode(cameraNode)
 
         sunLight.type = .directional
-        sunLight.color = UIColor.white
         sunLight.intensity = 1000
         let sunNode = SCNNode()
         sunNode.light = sunLight
@@ -229,7 +244,6 @@ final class GameWorld: NSObject {
         scene.rootNode.addChildNode(sunNode)
 
         ambientLight.type = .ambient
-        ambientLight.color = UIColor(white: 0.6, alpha: 1)
         ambientLight.intensity = 600
         let ambientNode = SCNNode()
         ambientNode.light = ambientLight
@@ -240,9 +254,10 @@ final class GameWorld: NSObject {
         gMat.diffuse.contents = UIColor(red: 0.30, green: 0.55, blue: 0.25, alpha: 1)
         ground.materials = [gMat]
         groundMaterial = gMat
-        let groundNode = SCNNode(geometry: ground)
-        groundNode.eulerAngles.x = -Float.pi / 2
-        scene.rootNode.addChildNode(groundNode)
+        let gNode = SCNNode(geometry: ground)
+        gNode.eulerAngles.x = -Float.pi / 2
+        scene.rootNode.addChildNode(gNode)
+        groundNode = gNode
 
         scene.background.contents = UIColor(red: 0.53, green: 0.81, blue: 0.92, alpha: 1)
 
@@ -250,6 +265,10 @@ final class GameWorld: NSObject {
         buildCampfire()
         buildCraftTable()
         buildTrees()
+        buildRocks()
+        buildKids()
+        buildTreasures()
+        buildMerchant()
         buildPlayer()
     }
 
@@ -260,28 +279,32 @@ final class GameWorld: NSObject {
         let bodyNode = SCNNode(geometry: body)
         bodyNode.position = SCNVector3(0, 2, 0)
         house.addChildNode(bodyNode)
-
         let roof = SCNPyramid(width: 7, height: 3, length: 6)
         roof.firstMaterial?.diffuse.contents = UIColor(red: 0.45, green: 0.18, blue: 0.15, alpha: 1)
         let roofNode = SCNNode(geometry: roof)
         roofNode.position = SCNVector3(0, 4, 0)
         house.addChildNode(roofNode)
-
         let door = SCNBox(width: 1.4, height: 2.2, length: 0.2, chamferRadius: 0)
         door.firstMaterial?.diffuse.contents = UIColor(red: 0.30, green: 0.20, blue: 0.12, alpha: 1)
         let doorNode = SCNNode(geometry: door)
         doorNode.position = SCNVector3(0, 1.1, -2.55)
         house.addChildNode(doorNode)
-
-        house.position = SCNVector3(0, 0, houseZ)
+        house.position = SCNVector3(0, 0, 12)
         scene.rootNode.addChildNode(house)
         houseNode = house
+    }
+
+    // The fire's glow expands the world: the map (ground) and the house grow
+    // as the campfire evolves.
+    private func applyWorldScale() {
+        let f = 1.0 + Float(campfireLevel - 1) * 0.13
+        groundNode?.scale = SCNVector3(f, f, 1)
+        houseNode?.scale = SCNVector3(f, f, f)
     }
 
     private func buildCampfire() {
         let fire = SCNNode()
         fire.name = "campfire"
-
         for i in 0..<8 {
             let angle = Float(i) / 8 * 2 * .pi
             let stone = SCNSphere(radius: 0.22)
@@ -298,7 +321,6 @@ final class GameWorld: NSObject {
             l.eulerAngles.y = rot
             fire.addChildNode(l)
         }
-
         let flameGeo = SCNCone(topRadius: 0, bottomRadius: 0.55, height: 1.3)
         let fMat = SCNMaterial()
         fMat.diffuse.contents = UIColor.orange
@@ -307,23 +329,18 @@ final class GameWorld: NSObject {
         let flame = SCNNode(geometry: flameGeo)
         flame.position = SCNVector3(0, 0.7, 0)
         flame.runAction(.repeatForever(.sequence([
-            .scale(to: 1.15, duration: 0.25),
-            .scale(to: 0.9, duration: 0.25)
-        ])))
+            .scale(to: 1.15, duration: 0.25), .scale(to: 0.9, duration: 0.25)])))
         fire.addChildNode(flame)
         flameNode = flame
-
         let light = SCNLight()
         light.type = .omni
         light.color = UIColor.orange
         light.intensity = 300
-        light.attenuationEndDistance = 14
         let lightNode = SCNNode()
         lightNode.light = light
         lightNode.position = SCNVector3(0, 2, 0)
         fire.addChildNode(lightNode)
         campLight = light
-
         fire.position = SCNVector3(4.5, 0, 6)
         scene.rootNode.addChildNode(fire)
         campfireNode = fire
@@ -345,13 +362,11 @@ final class GameWorld: NSObject {
             legNode.position = SCNVector3(dx, 0.5, dz)
             table.addChildNode(legNode)
         }
-        // A little anvil-ish block on top so it reads as a workbench.
         let tool = SCNBox(width: 0.5, height: 0.4, length: 0.4, chamferRadius: 0.05)
         tool.firstMaterial?.diffuse.contents = UIColor(white: 0.35, alpha: 1)
         let toolNode = SCNNode(geometry: tool)
         toolNode.position = SCNVector3(0.4, 1.35, 0)
         table.addChildNode(toolNode)
-
         table.position = SCNVector3(-4.5, 0, 6)
         scene.rootNode.addChildNode(table)
         craftTableNode = table
@@ -388,23 +403,159 @@ final class GameWorld: NSObject {
         return tree
     }
 
+    private func buildRocks() {
+        let positions: [(Float, Float)] = [(-10, 3), (8, -4), (-1, -14), (11, 2)]
+        for (x, z) in positions {
+            let rock = makeRock()
+            rock.position = SCNVector3(x, 0, z)
+            scene.rootNode.addChildNode(rock)
+            rockMetal[rock] = 4
+        }
+    }
+
+    private func makeRock() -> SCNNode {
+        let rock = SCNNode()
+        rock.name = "rock"
+        for (dx, dy, dz, r) in [(Float(0), Float(0.4), Float(0), Float(0.9)),
+                                (0.6, 0.25, 0.2, 0.55),
+                                (-0.5, 0.2, -0.3, 0.5)] {
+            let g = SCNSphere(radius: CGFloat(r))
+            g.firstMaterial?.diffuse.contents = UIColor(white: 0.45, alpha: 1)
+            let n = SCNNode(geometry: g)
+            n.position = SCNVector3(dx, dy, dz)
+            rock.addChildNode(n)
+        }
+        // metallic glints
+        for _ in 0..<3 {
+            let g = SCNSphere(radius: 0.12)
+            g.firstMaterial?.diffuse.contents = UIColor(red: 0.8, green: 0.7, blue: 0.4, alpha: 1)
+            g.firstMaterial?.metalness.contents = 1.0
+            let n = SCNNode(geometry: g)
+            n.position = SCNVector3(Float.random(in: -0.5...0.5), Float.random(in: 0.3...0.7), Float.random(in: -0.4...0.5))
+            rock.addChildNode(n)
+        }
+        return rock
+    }
+
+    private func buildKids() {
+        let positions: [(Float, Float)] = [(-12, -13), (12, -13), (-12, 9), (12, 9)]
+        let colors = [UIColor.systemYellow, UIColor.systemTeal, UIColor.systemPink, UIColor.systemGreen]
+        for (i, (x, z)) in positions.enumerated() {
+            let kid = makeKid(color: colors[i])
+            kid.position = SCNVector3(x, 0, z)
+            scene.rootNode.addChildNode(kid)
+            kidNodes.append(kid)
+        }
+    }
+
+    private func makeKid(color: UIColor) -> SCNNode {
+        let kid = SCNNode()
+        kid.name = "kid"
+        let body = SCNBox(width: 0.45, height: 0.6, length: 0.3, chamferRadius: 0.08)
+        body.firstMaterial?.diffuse.contents = color
+        let bodyNode = SCNNode(geometry: body)
+        bodyNode.position = SCNVector3(0, 0.75, 0)
+        kid.addChildNode(bodyNode)
+        let head = SCNSphere(radius: 0.24)
+        head.firstMaterial?.diffuse.contents = UIColor(red: 0.95, green: 0.78, blue: 0.6, alpha: 1)
+        let headNode = SCNNode(geometry: head)
+        headNode.position = SCNVector3(0, 1.3, 0)
+        kid.addChildNode(headNode)
+        // simple cage bars
+        for dx in [Float(-0.6), 0.6] {
+            for dz in [Float(-0.6), 0.6] {
+                let bar = SCNCylinder(radius: 0.05, height: 2.0)
+                bar.firstMaterial?.diffuse.contents = UIColor(white: 0.3, alpha: 1)
+                let barNode = SCNNode(geometry: bar)
+                barNode.position = SCNVector3(dx, 1.0, dz)
+                kid.addChildNode(barNode)
+            }
+        }
+        kid.runAction(.repeatForever(.sequence([
+            .moveBy(x: 0, y: 0.12, z: 0, duration: 0.5),
+            .moveBy(x: 0, y: -0.12, z: 0, duration: 0.5)])))
+        return kid
+    }
+
+    private func buildTreasures() {
+        let positions: [(Float, Float)] = [(-6, -8), (5, -9), (-9, -1)]
+        for (x, z) in positions {
+            let chest = makeTreasure()
+            chest.position = SCNVector3(x, 0, z)
+            scene.rootNode.addChildNode(chest)
+            treasureNodes.append(chest)
+        }
+    }
+
+    private func makeTreasure() -> SCNNode {
+        let chest = SCNNode()
+        chest.name = "treasure"
+        let box = SCNBox(width: 0.9, height: 0.6, length: 0.6, chamferRadius: 0.06)
+        box.firstMaterial?.diffuse.contents = UIColor(red: 0.5, green: 0.32, blue: 0.14, alpha: 1)
+        let boxNode = SCNNode(geometry: box)
+        boxNode.position = SCNVector3(0, 0.35, 0)
+        chest.addChildNode(boxNode)
+        let lid = SCNBox(width: 0.95, height: 0.2, length: 0.65, chamferRadius: 0.06)
+        let lidMat = SCNMaterial()
+        lidMat.diffuse.contents = UIColor(red: 0.85, green: 0.7, blue: 0.2, alpha: 1)
+        lidMat.metalness.contents = 0.8
+        lid.materials = [lidMat]
+        let lidNode = SCNNode(geometry: lid)
+        lidNode.position = SCNVector3(0, 0.72, 0)
+        chest.addChildNode(lidNode)
+        return chest
+    }
+
+    private func buildMerchant() {
+        let m = SCNNode()
+        m.name = "merchant"
+        let robe = SCNCone(topRadius: 0.25, bottomRadius: 0.7, height: 1.6)
+        robe.firstMaterial?.diffuse.contents = UIColor(red: 0.35, green: 0.2, blue: 0.5, alpha: 1)
+        let robeNode = SCNNode(geometry: robe)
+        robeNode.position = SCNVector3(0, 0.8, 0)
+        m.addChildNode(robeNode)
+        let head = SCNSphere(radius: 0.3)
+        head.firstMaterial?.diffuse.contents = UIColor(red: 0.95, green: 0.78, blue: 0.6, alpha: 1)
+        let headNode = SCNNode(geometry: head)
+        headNode.position = SCNVector3(0, 1.7, 0)
+        m.addChildNode(headNode)
+        let hat = SCNCone(topRadius: 0, bottomRadius: 0.45, height: 0.6)
+        hat.firstMaterial?.diffuse.contents = UIColor(red: 0.2, green: 0.12, blue: 0.3, alpha: 1)
+        let hatNode = SCNNode(geometry: hat)
+        hatNode.position = SCNVector3(0, 2.1, 0)
+        m.addChildNode(hatNode)
+        // a glowing "?" marker beacon
+        let beacon = SCNSphere(radius: 0.18)
+        let bMat = SCNMaterial()
+        bMat.diffuse.contents = UIColor.yellow
+        bMat.emission.contents = UIColor.yellow
+        beacon.materials = [bMat]
+        let beaconNode = SCNNode(geometry: beacon)
+        beaconNode.position = SCNVector3(0, 2.8, 0)
+        beaconNode.runAction(.repeatForever(.sequence([
+            .moveBy(x: 0, y: 0.2, z: 0, duration: 0.6),
+            .moveBy(x: 0, y: -0.2, z: 0, duration: 0.6)])))
+        m.addChildNode(beaconNode)
+        m.position = SCNVector3(3, 0, 9)
+        m.isHidden = true
+        scene.rootNode.addChildNode(m)
+        merchantNode = m
+    }
+
     private func buildPlayer() {
         let skin = UIColor(red: 0.95, green: 0.78, blue: 0.6, alpha: 1)
         let shirt = UIColor(red: 0.15, green: 0.5, blue: 0.75, alpha: 1)
         let pants = UIColor(red: 0.2, green: 0.22, blue: 0.28, alpha: 1)
-
         let body = SCNBox(width: 0.7, height: 0.9, length: 0.4, chamferRadius: 0.1)
         body.firstMaterial?.diffuse.contents = shirt
         let bodyNode = SCNNode(geometry: body)
         bodyNode.position = SCNVector3(0, 1.15, 0)
         playerNode.addChildNode(bodyNode)
-
         let head = SCNSphere(radius: 0.32)
         head.firstMaterial?.diffuse.contents = skin
         let headNode = SCNNode(geometry: head)
         headNode.position = SCNVector3(0, 1.95, 0)
         playerNode.addChildNode(headNode)
-
         for dx in [Float(-0.18), 0.18] {
             let leg = SCNBox(width: 0.22, height: 0.8, length: 0.25, chamferRadius: 0.05)
             leg.firstMaterial?.diffuse.contents = pants
@@ -419,7 +570,6 @@ final class GameWorld: NSObject {
             armNode.position = SCNVector3(dx, 1.15, 0)
             playerNode.addChildNode(armNode)
         }
-        // Tiny eyes so the front is clear (model faces -z).
         for dx in [Float(-0.12), 0.12] {
             let eye = SCNSphere(radius: 0.05)
             eye.firstMaterial?.diffuse.contents = UIColor.black
@@ -427,7 +577,6 @@ final class GameWorld: NSObject {
             eyeNode.position = SCNVector3(dx, 1.98, -0.28)
             playerNode.addChildNode(eyeNode)
         }
-
         playerNode.position = SCNVector3(0, 0, 4)
         scene.rootNode.addChildNode(playerNode)
     }
@@ -440,13 +589,11 @@ final class GameWorld: NSObject {
         let bMat = SCNMaterial()
         bMat.diffuse.contents = red
         bMat.emission.contents = UIColor(red: 0.4, green: 0, blue: 0, alpha: 1)
-
         let body = SCNBox(width: 1.8, height: 2.6, length: 1.2, chamferRadius: 0.2)
         body.materials = [bMat]
         let bodyNode = SCNNode(geometry: body)
         bodyNode.position = SCNVector3(0, 1.8, 0)
         group.addChildNode(bodyNode)
-
         let head = SCNSphere(radius: 0.9)
         let hMat = SCNMaterial()
         hMat.diffuse.contents = red
@@ -455,15 +602,15 @@ final class GameWorld: NSObject {
         let headNode = SCNNode(geometry: head)
         headNode.position = SCNVector3(0, 3.6, 0)
         group.addChildNode(headNode)
-
-        for dx in [Float(-0.35), 0.35] {
-            let eye = SCNSphere(radius: 0.18)
+        // FOUR white eyes
+        for (dx, dy) in [(Float(-0.45), Float(3.95)), (0.45, 3.95), (-0.25, 3.45), (0.25, 3.45)] {
+            let eye = SCNSphere(radius: 0.16)
             let eMat = SCNMaterial()
-            eMat.diffuse.contents = UIColor.yellow
-            eMat.emission.contents = UIColor.yellow
+            eMat.diffuse.contents = UIColor.white
+            eMat.emission.contents = UIColor.white
             eye.materials = [eMat]
             let eyeNode = SCNNode(geometry: eye)
-            eyeNode.position = SCNVector3(dx, 3.75, 0.8)
+            eyeNode.position = SCNVector3(dx, dy, 0.78)
             group.addChildNode(eyeNode)
         }
         for dx in [Float(-0.55), 0.55] {
@@ -492,19 +639,16 @@ final class GameWorld: NSObject {
         let mat = SCNMaterial()
         mat.diffuse.contents = maroon
         mat.emission.contents = UIColor(red: 0.25, green: 0, blue: 0, alpha: 1)
-
         let body = SCNBox(width: 0.6, height: 0.9, length: 0.45, chamferRadius: 0.1)
         body.materials = [mat]
         let bodyNode = SCNNode(geometry: body)
         bodyNode.position = SCNVector3(0, 0.85, 0)
         group.addChildNode(bodyNode)
-
         let head = SCNSphere(radius: 0.35)
         head.materials = [mat]
         let headNode = SCNNode(geometry: head)
         headNode.position = SCNVector3(0, 1.5, 0)
         group.addChildNode(headNode)
-
         for dx in [Float(-0.13), 0.13] {
             let eye = SCNSphere(radius: 0.07)
             let eMat = SCNMaterial()
@@ -522,293 +666,44 @@ final class GameWorld: NSObject {
             hornNode.position = SCNVector3(dx, 1.8, 0)
             group.addChildNode(hornNode)
         }
-        for dx in [Float(-0.18), 0.18] {
-            let leg = SCNBox(width: 0.18, height: 0.5, length: 0.2, chamferRadius: 0.04)
-            leg.materials = [mat]
-            let legNode = SCNNode(geometry: leg)
-            legNode.position = SCNVector3(dx, 0.25, 0)
-            group.addChildNode(legNode)
-        }
         return group
     }
 
-    // MARK: - HUD
-    private func buildHUD() {
-        hud.scaleMode = .resizeFill
-        hud.anchorPoint = CGPoint(x: 0, y: 0)
-        hud.backgroundColor = .clear
-        hud.isUserInteractionEnabled = false
-
-        let top = viewSize.height - 30
-        configureLabel(hudDay, size: 20, align: .left, at: CGPoint(x: 16, y: top - 22))
-        configureLabel(hudRes, size: 17, align: .left, at: CGPoint(x: 16, y: top - 46))
-        configureLabel(hudPhase, size: 16, align: .left, at: CGPoint(x: 16, y: top - 68))
-        configureLabel(hudStats, size: 20, align: .right, at: CGPoint(x: viewSize.width - 16, y: top - 22))
-        configureLabel(hudTimer, size: 17, align: .right, at: CGPoint(x: viewSize.width - 16, y: top - 46))
-
-        let flash = SKShapeNode(rect: CGRect(origin: .zero, size: viewSize))
-        flash.fillColor = .red
-        flash.strokeColor = .clear
-        flash.alpha = 0
-        flash.zPosition = 90
-        hud.addChild(flash)
-        damageFlash = flash
-
-        buildJoystick()
-        buildCraftMenu()
-        buildMenuOverlay()
-        updateHUD()
-    }
-
-    private func configureLabel(_ label: SKLabelNode, size: CGFloat,
-                                align: SKLabelHorizontalAlignmentMode, at pos: CGPoint) {
-        label.fontSize = size
-        label.fontColor = .white
-        label.horizontalAlignmentMode = align
-        label.position = pos
-        label.zPosition = 100
-        hud.addChild(label)
-    }
-
-    private func buildJoystick() {
-        joystickBase.fillColor = SKColor(white: 1, alpha: 0.12)
-        joystickBase.strokeColor = SKColor(white: 1, alpha: 0.35)
-        joystickBase.lineWidth = 2
-        joystickBase.position = joystickCenter
-        joystickBase.zPosition = 95
-        hud.addChild(joystickBase)
-
-        joystickKnob.fillColor = SKColor(white: 1, alpha: 0.4)
-        joystickKnob.strokeColor = SKColor(white: 1, alpha: 0.7)
-        joystickKnob.position = joystickCenter
-        joystickKnob.zPosition = 96
-        hud.addChild(joystickKnob)
-
-        setJoystickVisible(false)
-    }
-
-    private func setJoystickVisible(_ visible: Bool) {
-        let a: CGFloat = visible ? 1 : 0
-        joystickBase.alpha = a
-        joystickKnob.alpha = a
-    }
-
-    private func buildCraftMenu() {
-        craftMenu.zPosition = 210
-        craftMenu.isHidden = true
-
-        let dim = SKShapeNode(rect: CGRect(origin: .zero, size: viewSize))
-        dim.fillColor = SKColor(white: 0, alpha: 0.55)
-        dim.strokeColor = .clear
-        craftMenu.addChild(dim)
-
-        let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        title.text = "CRAFTING TABLE"
-        title.fontSize = 28
-        title.fontColor = .white
-        title.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.66)
-        craftMenu.addChild(title)
-
-        let spearBtn = makeButton(name: "craft_spear",
-                                  at: CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.52),
-                                  label: craftSpearLabel)
-        let reinforceBtn = makeButton(name: "craft_reinforce",
-                                      at: CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.40),
-                                      label: craftReinforceLabel)
-        craftMenu.addChild(spearBtn)
-        craftMenu.addChild(reinforceBtn)
-
-        let close = makeButton(name: "craft_close",
-                               at: CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.26),
-                               label: nil)
-        if let lbl = close.childNode(withName: "label") as? SKLabelNode { lbl.text = "Close" }
-        craftMenu.addChild(close)
-
-        hud.addChild(craftMenu)
-    }
-
-    private func makeButton(name: String, at pos: CGPoint, label: SKLabelNode?) -> SKNode {
-        let btn = SKShapeNode(rectOf: CGSize(width: viewSize.width * 0.7, height: 54), cornerRadius: 12)
-        btn.name = name
-        btn.fillColor = SKColor(red: 0.2, green: 0.22, blue: 0.3, alpha: 0.95)
-        btn.strokeColor = SKColor(white: 1, alpha: 0.5)
-        btn.position = pos
-        let text = label ?? SKLabelNode(fontNamed: "AvenirNext-Medium")
-        text.name = "label"
-        text.fontSize = 19
-        text.fontColor = .white
-        text.verticalAlignmentMode = .center
-        text.horizontalAlignmentMode = .center
-        text.position = .zero
-        btn.addChild(text)
-        return btn
-    }
-
-    private func buildMenuOverlay() {
-        overlay.zPosition = 200
-        let dim = SKShapeNode(rect: CGRect(origin: .zero, size: viewSize))
-        dim.fillColor = SKColor(white: 0, alpha: 0.65)
-        dim.strokeColor = .clear
-        overlay.addChild(dim)
-
-        overlayTitle.fontSize = 38
-        overlayTitle.fontColor = .white
-        overlayTitle.horizontalAlignmentMode = .center
-        overlayTitle.numberOfLines = 0
-        overlayTitle.preferredMaxLayoutWidth = viewSize.width - 60
-        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 + 40)
-        overlay.addChild(overlayTitle)
-
-        overlaySub.fontSize = 18
-        overlaySub.fontColor = SKColor(white: 0.85, alpha: 1)
-        overlaySub.horizontalAlignmentMode = .center
-        overlaySub.numberOfLines = 0
-        overlaySub.preferredMaxLayoutWidth = viewSize.width - 60
-        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
-        overlay.addChild(overlaySub)
-
-        buildDifficultyButtons()
-        overlay.addChild(difficultyButtons)
-
-        hud.addChild(overlay)
-    }
-
-    private func buildDifficultyButtons() {
-        let cases = Difficulty.allCases
-        let topY = viewSize.height * 0.60
-        let step = viewSize.height * 0.095
-        for (i, diff) in cases.enumerated() {
-            let c = diff.config
-            let y = topY - CGFloat(i) * step
-            let btn = makeButton(name: "diff_\(diff.rawValue)",
-                                 at: CGPoint(x: viewSize.width / 2, y: y), label: nil)
-            if let lbl = btn.childNode(withName: "label") as? SKLabelNode {
-                lbl.text = "\(c.name) — \(c.blurb)"
-            }
-            difficultyButtons.addChild(btn)
+    private func makeWolf(angry: Bool) -> SCNNode {
+        let group = SCNNode()
+        group.name = angry ? "angryWolf" : "wolf"
+        let coat = angry ? UIColor(red: 0.28, green: 0.18, blue: 0.20, alpha: 1)
+                         : UIColor(red: 0.42, green: 0.43, blue: 0.47, alpha: 1)
+        let body = SCNBox(width: 0.8, height: 0.7, length: 1.6, chamferRadius: 0.15)
+        body.firstMaterial?.diffuse.contents = coat
+        let bodyNode = SCNNode(geometry: body)
+        bodyNode.position = SCNVector3(0, 0.7, 0)
+        if angry { bodyNode.scale = SCNVector3(1.2, 1.2, 1.2) }
+        group.addChildNode(bodyNode)
+        let head = SCNBox(width: 0.55, height: 0.55, length: 0.6, chamferRadius: 0.1)
+        head.firstMaterial?.diffuse.contents = coat
+        let headNode = SCNNode(geometry: head)
+        headNode.position = SCNVector3(0, 0.9, 0.95)
+        group.addChildNode(headNode)
+        let eyeColor: UIColor = angry ? .red : .yellow
+        for dx in [Float(-0.18), 0.18] {
+            let eye = SCNSphere(radius: angry ? 0.1 : 0.07)
+            let eMat = SCNMaterial()
+            eMat.diffuse.contents = eyeColor
+            eMat.emission.contents = eyeColor
+            eye.materials = [eMat]
+            let eyeNode = SCNNode(geometry: eye)
+            eyeNode.position = SCNVector3(dx, 1.0, 1.25)
+            group.addChildNode(eyeNode)
         }
-    }
-
-    private func updateHUD() {
-        hudDay.text = "Day \(day)/\(maxDays)"
-        hudRes.text = "🪵\(wood)  🔥\(campfireLevel)  🗡\(attackPower)"
-        let hearts = String(repeating: "❤️", count: max(0, health))
-            + String(repeating: "🖤", count: max(0, maxHealth - health))
-        hudStats.text = "\(hearts)  🍖\(food)"
-        switch phase {
-        case .day:
-            hudPhase.text = "☀️ DAY — Hunt, chop wood, craft"
-            hudTimer.text = timeString(phaseTimeRemaining)
-        case .night:
-            hudPhase.text = isRaidNight(day) ? "🌙 RAID NIGHT — Demons!" : "🌙 NIGHT — The Red God"
-            hudTimer.text = timeString(phaseTimeRemaining)
-        default:
-            hudPhase.text = ""
-            hudTimer.text = ""
+        for (dx, dz) in [(Float(-0.3), Float(0.5)), (0.3, 0.5), (-0.3, -0.5), (0.3, -0.5)] {
+            let leg = SCNBox(width: 0.18, height: 0.5, length: 0.18, chamferRadius: 0)
+            leg.firstMaterial?.diffuse.contents = coat
+            let legNode = SCNNode(geometry: leg)
+            legNode.position = SCNVector3(dx, 0.25, dz)
+            group.addChildNode(legNode)
         }
-    }
-
-    private func timeString(_ t: TimeInterval) -> String {
-        let s = max(0, Int(t.rounded()))
-        return String(format: "⏱ %d:%02d", s / 60, s % 60)
-    }
-
-    private func updateCraftLabels() {
-        craftSpearLabel.text = "🗡 Sharper Spear (10🪵) — atk \(attackPower)→\(min(4, attackPower + 1))"
-        craftReinforceLabel.text = "🛡 Reinforce House (8🪵) — heal + max ❤️"
-    }
-
-    // MARK: - Screens
-    private func showTitle() {
-        phase = .title
-        overlay.isHidden = false
-        difficultyButtons.isHidden = false
-        setJoystickVisible(false)
-        overlayTitle.text = "99 DAYS IN THE HOUSE"
-        overlayTitle.fontSize = 28
-        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.86)
-        overlaySub.text = "Joystick to run · chop 🪵 · evolve 🔥 · craft 🛠\nHunt 🍖 by day, fight by night.\n\nChoose your difficulty:"
-        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.72)
-        updateHUD()
-    }
-
-    private func startGame(_ difficulty: Difficulty) {
-        config = difficulty.config
-        maxHealth = config.maxHealth
-        dayDuration = config.dayDuration
-        nightDuration = config.nightDuration
-        redGodMaxHP = config.redGodHP
-        demonMaxHP = config.demonHP
-
-        day = 1
-        health = maxHealth
-        food = config.startFood
-        wood = config.startWood
-        attackPower = config.attackPower
-        campfireLevel = 1
-        updateCampfireVisual()
-
-        clearEnemies()
-        removeAllAnimals()
-        regrowAllTrees()
-        closeCraftMenu()
-        playerNode.position = SCNVector3(0, 0, 4)
-
-        overlay.isHidden = true
-        difficultyButtons.isHidden = true
-        setJoystickVisible(true)
-        startDay()
-    }
-
-    // MARK: - Day phase
-    private func startDay() {
-        phase = .day
-        phaseTimeRemaining = dayDuration
-        applyDayLighting()
-        flashBanner("☀️ Day \(day)", color: .white)
-        updateHUD()
-        scheduleSpawn()
-    }
-
-    private func applyDayLighting() {
-        sunLight.color = UIColor.white
-        sunLight.intensity = 1000
-        ambientLight.color = UIColor(white: 0.6, alpha: 1)
-        ambientLight.intensity = 600
-        scene.background.contents = UIColor(red: 0.53, green: 0.81, blue: 0.92, alpha: 1)
-        groundMaterial?.diffuse.contents = UIColor(red: 0.30, green: 0.55, blue: 0.25, alpha: 1)
-        updateCampfireVisual()
-    }
-
-    private func scheduleSpawn() {
-        guard phase == .day else { return }
-        let wait = SCNAction.wait(duration: Double.random(in: config.animalSpawn))
-        let run = SCNAction.run { [weak self] _ in
-            self?.spawnAnimal()
-            self?.scheduleSpawn()
-        }
-        scene.rootNode.runAction(SCNAction.sequence([wait, run]), forKey: "daySpawn")
-    }
-
-    private func spawnAnimal() {
-        guard phase == .day else { return }
-        let isWolf = Int.random(in: 0...2) == 0
-        let node = isWolf ? makeWolf() : makeBunny()
-        let x = Float.random(in: minX...maxX)
-        node.position = SCNVector3(x, 0, spawnZ)
-        scene.rootNode.addChildNode(node)
-
-        let speed: TimeInterval = isWolf ? Double.random(in: 5.0...7.0)
-                                         : Double.random(in: 4.0...6.0)
-        let move = SCNAction.move(to: SCNVector3(x, 0, frontZ), duration: speed)
-        move.timingMode = .linear
-        if isWolf {
-            let dmg = config.wolfDamage
-            let bite = SCNAction.run { [weak self] _ in self?.changeHealth(-dmg) }
-            node.runAction(SCNAction.sequence([move, bite, .removeFromParentNode()]))
-        } else {
-            node.runAction(SCNAction.sequence([move, .removeFromParentNode()]))
-        }
+        return group
     }
 
     private func makeBunny() -> SCNNode {
@@ -836,61 +731,356 @@ final class GameWorld: NSObject {
         return group
     }
 
-    private func makeWolf() -> SCNNode {
-        let group = SCNNode()
-        group.name = "wolf"
-        let grey = UIColor(red: 0.42, green: 0.43, blue: 0.47, alpha: 1)
-        let body = SCNBox(width: 0.8, height: 0.7, length: 1.6, chamferRadius: 0.15)
-        body.firstMaterial?.diffuse.contents = grey
-        let bodyNode = SCNNode(geometry: body)
-        bodyNode.position = SCNVector3(0, 0.7, 0)
-        group.addChildNode(bodyNode)
-        let head = SCNBox(width: 0.55, height: 0.55, length: 0.6, chamferRadius: 0.1)
-        head.firstMaterial?.diffuse.contents = grey
-        let headNode = SCNNode(geometry: head)
-        headNode.position = SCNVector3(0, 0.85, 0.95)
-        group.addChildNode(headNode)
-        for dx in [Float(-0.25), 0.25] {
-            let eye = SCNSphere(radius: 0.07)
-            eye.firstMaterial?.diffuse.contents = UIColor.yellow
-            eye.firstMaterial?.emission.contents = UIColor.yellow
-            let eyeNode = SCNNode(geometry: eye)
-            eyeNode.position = SCNVector3(dx, 0.95, 1.25)
-            group.addChildNode(eyeNode)
-        }
-        for (dx, dz) in [(Float(-0.3), Float(0.5)), (0.3, 0.5), (-0.3, -0.5), (0.3, -0.5)] {
-            let leg = SCNBox(width: 0.18, height: 0.5, length: 0.18, chamferRadius: 0)
-            leg.firstMaterial?.diffuse.contents = grey
-            let legNode = SCNNode(geometry: leg)
-            legNode.position = SCNVector3(dx, 0.25, dz)
-            group.addChildNode(legNode)
-        }
-        return group
+    // MARK: - HUD
+    private func buildHUD() {
+        hud.scaleMode = .resizeFill
+        hud.anchorPoint = CGPoint(x: 0, y: 0)
+        hud.backgroundColor = .clear
+        hud.isUserInteractionEnabled = false
+        let top = viewSize.height - 28
+        configureLabel(hudDay, size: 19, align: .left, at: CGPoint(x: 14, y: top - 20))
+        configureLabel(hudVit, size: 17, align: .left, at: CGPoint(x: 14, y: top - 42))
+        configureLabel(hudRes, size: 15, align: .left, at: CGPoint(x: 14, y: top - 62))
+        configureLabel(hudGear, size: 15, align: .left, at: CGPoint(x: 14, y: top - 82))
+        configureLabel(hudPhase, size: 15, align: .right, at: CGPoint(x: viewSize.width - 14, y: top - 20))
+        configureLabel(hudTimer, size: 17, align: .right, at: CGPoint(x: viewSize.width - 14, y: top - 42))
+
+        let flash = SKShapeNode(rect: CGRect(origin: .zero, size: viewSize))
+        flash.fillColor = .red
+        flash.strokeColor = .clear
+        flash.alpha = 0
+        flash.zPosition = 90
+        hud.addChild(flash)
+        damageFlash = flash
+
+        buildCampfireBar(topY: top)
+        buildJoystick()
+        buildCraftMenu()
+        buildMenuOverlay()
+        updateHUD()
+        updateCampfireBar()
     }
 
-    private func removeAllAnimals() {
-        for n in scene.rootNode.childNodes where n.name == "bunny" || n.name == "wolf" || n.name == "dead" {
+    private func buildCampfireBar(topY: CGFloat) {
+        let label = campBarLabel
+        label.fontSize = 13
+        label.fontColor = .white
+        label.horizontalAlignmentMode = .left
+        label.verticalAlignmentMode = .center
+        label.position = CGPoint(x: 14, y: topY - 104)
+        label.zPosition = 100
+        hud.addChild(label)
+
+        let barX: CGFloat = 100
+        campBarBG.fillColor = SKColor(white: 1, alpha: 0.15)
+        campBarBG.strokeColor = SKColor(white: 1, alpha: 0.4)
+        campBarBG.lineWidth = 1
+        campBarBG.position = CGPoint(x: barX + 75, y: topY - 104)
+        campBarBG.zPosition = 100
+        hud.addChild(campBarBG)
+
+        campBarFill.fillColor = SKColor.orange
+        campBarFill.strokeColor = .clear
+        campBarFill.position = CGPoint(x: barX, y: topY - 104)   // left edge anchor
+        campBarFill.zPosition = 101
+        hud.addChild(campBarFill)
+    }
+
+    private func updateCampfireBar() {
+        let pct = Float(campfireLevel) / Float(maxCampfireLevel)
+        campBarLabel.text = "🔥 \(Int((pct * 100).rounded()))%"
+        let fullWidth: CGFloat = 150
+        let w = max(2, fullWidth * CGFloat(pct))
+        campBarFill.path = CGPath(roundedRect: CGRect(x: 0, y: -6, width: w, height: 12),
+                                  cornerWidth: 6, cornerHeight: 6, transform: nil)
+    }
+
+    private func configureLabel(_ label: SKLabelNode, size: CGFloat,
+                                align: SKLabelHorizontalAlignmentMode, at pos: CGPoint) {
+        label.fontSize = size
+        label.fontColor = .white
+        label.horizontalAlignmentMode = align
+        label.position = pos
+        label.zPosition = 100
+        hud.addChild(label)
+    }
+
+    private func buildJoystick() {
+        joystickBase.fillColor = SKColor(white: 1, alpha: 0.12)
+        joystickBase.strokeColor = SKColor(white: 1, alpha: 0.35)
+        joystickBase.lineWidth = 2
+        joystickBase.position = joystickCenter
+        joystickBase.zPosition = 95
+        hud.addChild(joystickBase)
+        joystickKnob.fillColor = SKColor(white: 1, alpha: 0.4)
+        joystickKnob.strokeColor = SKColor(white: 1, alpha: 0.7)
+        joystickKnob.position = joystickCenter
+        joystickKnob.zPosition = 96
+        hud.addChild(joystickKnob)
+        setJoystickVisible(false)
+    }
+
+    private func setJoystickVisible(_ visible: Bool) {
+        let a: CGFloat = visible ? 1 : 0
+        joystickBase.alpha = a
+        joystickKnob.alpha = a
+    }
+
+    private func buildCraftMenu() {
+        craftMenu.zPosition = 210
+        craftMenu.isHidden = true
+        let dim = SKShapeNode(rect: CGRect(origin: .zero, size: viewSize))
+        dim.fillColor = SKColor(white: 0, alpha: 0.6)
+        dim.strokeColor = .clear
+        craftMenu.addChild(dim)
+        let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        title.text = "CRAFTING TABLE"
+        title.fontSize = 26
+        title.fontColor = .white
+        title.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.72)
+        craftMenu.addChild(title)
+
+        let recipes = ["craft_katana", "craft_axe", "craft_bag", "craft_bed", "craft_map"]
+        let topY = viewSize.height * 0.60
+        let step = viewSize.height * 0.085
+        for (i, name) in recipes.enumerated() {
+            let lbl = SKLabelNode(fontNamed: "AvenirNext-Medium")
+            craftLabels[name] = lbl
+            let btn = makeButton(name: name, at: CGPoint(x: viewSize.width / 2, y: topY - CGFloat(i) * step), label: lbl)
+            craftMenu.addChild(btn)
+        }
+        let close = makeButton(name: "craft_close",
+                               at: CGPoint(x: viewSize.width / 2, y: topY - CGFloat(recipes.count) * step), label: nil)
+        if let lbl = close.childNode(withName: "label") as? SKLabelNode { lbl.text = "Close" }
+        craftMenu.addChild(close)
+        hud.addChild(craftMenu)
+    }
+
+    private func makeButton(name: String, at pos: CGPoint, label: SKLabelNode?) -> SKNode {
+        let btn = SKShapeNode(rectOf: CGSize(width: viewSize.width * 0.78, height: 46), cornerRadius: 11)
+        btn.name = name
+        btn.fillColor = SKColor(red: 0.2, green: 0.22, blue: 0.3, alpha: 0.95)
+        btn.strokeColor = SKColor(white: 1, alpha: 0.5)
+        btn.position = pos
+        let text = label ?? SKLabelNode(fontNamed: "AvenirNext-Medium")
+        text.name = "label"
+        text.fontSize = 17
+        text.fontColor = .white
+        text.verticalAlignmentMode = .center
+        text.horizontalAlignmentMode = .center
+        text.position = .zero
+        btn.addChild(text)
+        return btn
+    }
+
+    private func buildMenuOverlay() {
+        overlay.zPosition = 200
+        let dim = SKShapeNode(rect: CGRect(origin: .zero, size: viewSize))
+        dim.fillColor = SKColor(white: 0, alpha: 0.65)
+        dim.strokeColor = .clear
+        overlay.addChild(dim)
+        overlayTitle.fontSize = 30
+        overlayTitle.fontColor = .white
+        overlayTitle.horizontalAlignmentMode = .center
+        overlayTitle.numberOfLines = 0
+        overlayTitle.preferredMaxLayoutWidth = viewSize.width - 60
+        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 + 40)
+        overlay.addChild(overlayTitle)
+        overlaySub.fontSize = 17
+        overlaySub.fontColor = SKColor(white: 0.85, alpha: 1)
+        overlaySub.horizontalAlignmentMode = .center
+        overlaySub.numberOfLines = 0
+        overlaySub.preferredMaxLayoutWidth = viewSize.width - 60
+        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
+        overlay.addChild(overlaySub)
+        authorLabel.text = "Created by Dominick Skorokhod"
+        authorLabel.fontSize = 14
+        authorLabel.fontColor = SKColor(white: 0.75, alpha: 1)
+        authorLabel.horizontalAlignmentMode = .center
+        authorLabel.position = CGPoint(x: viewSize.width / 2, y: 24)
+        overlay.addChild(authorLabel)
+
+        buildDifficultyButtons()
+        overlay.addChild(difficultyButtons)
+        hud.addChild(overlay)
+    }
+
+    private func buildDifficultyButtons() {
+        let cases = Difficulty.allCases
+        let topY = viewSize.height * 0.58
+        let step = viewSize.height * 0.092
+        for (i, diff) in cases.enumerated() {
+            let c = diff.config
+            let btn = makeButton(name: "diff_\(diff.rawValue)",
+                                 at: CGPoint(x: viewSize.width / 2, y: topY - CGFloat(i) * step), label: nil)
+            if let lbl = btn.childNode(withName: "label") as? SKLabelNode {
+                lbl.text = "\(c.name) — \(c.blurb)"
+            }
+            difficultyButtons.addChild(btn)
+        }
+    }
+
+    private func updateHUD() {
+        hudDay.text = "Day \(day)/\(maxDays)"
+        hudVit.text = "❤️ \(max(0, lives))   🍖 \(food)"
+        hudRes.text = "🪵\(wood)  🔩\(metal)  🐾\(bunnyFeet)"
+        hudGear.text = "🗡\(attackPower)  🔥\(campfireLevel)  🧒\(kidsSaved)/4"
+        switch phase {
+        case .day:
+            hudPhase.text = merchantDays.contains(day) ? "☀️ DAY · Trader here!" : "☀️ DAY"
+            hudTimer.text = timeString(phaseTimeRemaining)
+        case .night:
+            hudPhase.text = isRaidNight(day) ? "🌙 RAID NIGHT" : "🌙 NIGHT"
+            hudTimer.text = timeString(phaseTimeRemaining)
+        default:
+            hudPhase.text = ""
+            hudTimer.text = ""
+        }
+    }
+
+    private func timeString(_ t: TimeInterval) -> String {
+        let s = max(0, Int(t.rounded()))
+        return String(format: "⏱ %d:%02d", s / 60, s % 60)
+    }
+
+    private func updateCraftLabels() {
+        craftLabels["craft_katana"]?.text = hasKatana ? "🗡 Katana — Owned" : "🗡 Katana (6🪵 5🔩) +2 atk"
+        craftLabels["craft_axe"]?.text = hasAxe ? "🪓 Axe — Owned" : "🪓 Axe (4🪵 3🔩) +1 wood/chop"
+        craftLabels["craft_bag"]?.text = hasBag ? "🎒 Bag — Owned" : "🎒 Bag (5🪵 2🔩) +1 per gather"
+        craftLabels["craft_bed"]?.text = hasBed ? "🛏 Bed — Owned (rest to heal)" : "🛏 Bed (10🪵 4🔩) rest to heal"
+        craftLabels["craft_map"]?.text = hasMap ? "🗺 Map — Owned" : "🗺 Map (6🪵 2🔩) reveal kids/treasure"
+    }
+
+    // MARK: - Screens
+    private func showTitle() {
+        phase = .title
+        overlay.isHidden = false
+        difficultyButtons.isHidden = false
+        authorLabel.isHidden = false
+        setJoystickVisible(false)
+        overlayTitle.fontSize = 26
+        overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.88)
+        overlayTitle.text = "99 DAYS IN THE HOUSE"
+        overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.74)
+        overlaySub.text = "Survive 99 days · save 🧒×4 · enemies hunt YOU\nRun to dodge, tap to fight. Choose difficulty:"
+        updateHUD()
+    }
+
+    private func startGame(_ difficulty: Difficulty) {
+        config = difficulty.config
+        day = 1
+        lives = maxLives
+        food = config.startFood
+        wood = config.startWood
+        metal = config.startMetal
+        bunnyFeet = 0
+        kidsSaved = 0
+        attackPower = config.attackPower
+        campfireLevel = 1
+        hasAxe = false; hasBag = false; hasKatana = false
+        hasBed = false; hasMap = false; hasWolfCover = false
+        bedUsedToday = false
+        updateCampfireVisual()
+
+        clearEnemies()
+        removeAllBunnies()
+        regrowAllTrees()
+        regrowAllRocks()
+        resetKidsAndTreasures()
+        bedNode?.removeFromParentNode(); bedNode = nil
+        closeCraftMenu()
+        playerNode.position = SCNVector3(0, 0, 4)
+
+        overlay.isHidden = true
+        difficultyButtons.isHidden = true
+        setJoystickVisible(true)
+        startDay()
+    }
+
+    // MARK: - Day phase
+    private func startDay() {
+        phase = .day
+        phaseTimeRemaining = config.dayDuration
+        bedUsedToday = false
+        applyDayLighting()
+        flashBanner("☀️ Day \(day)", color: .white)
+        if merchantDays.contains(day) {
+            merchantNode?.isHidden = false
+            flashBanner("🧙 A trader has arrived!", color: .yellow)
+        } else {
+            merchantNode?.isHidden = true
+        }
+        updateHUD()
+        scheduleDaySpawn()
+    }
+
+    private func applyDayLighting() {
+        sunLight.color = UIColor.white
+        sunLight.intensity = 1000
+        ambientLight.color = UIColor(white: 0.6, alpha: 1)
+        ambientLight.intensity = 600
+        scene.background.contents = UIColor(red: 0.53, green: 0.81, blue: 0.92, alpha: 1)
+        groundMaterial?.diffuse.contents = UIColor(red: 0.30, green: 0.55, blue: 0.25, alpha: 1)
+        updateCampfireVisual()
+    }
+
+    private func scheduleDaySpawn() {
+        guard phase == .day else { return }
+        let wait = SCNAction.wait(duration: Double.random(in: config.animalSpawn))
+        let run = SCNAction.run { [weak self] _ in
+            self?.spawnDayCreature()
+            self?.scheduleDaySpawn()
+        }
+        scene.rootNode.runAction(SCNAction.sequence([wait, run]), forKey: "daySpawn")
+    }
+
+    private func spawnDayCreature() {
+        guard phase == .day else { return }
+        let roll = Int.random(in: 0..<100)
+        let angryChance = min(20, 4 + day / 6)
+        if roll < 55 {
+            spawnBunny()
+        } else if roll < 100 - angryChance {
+            spawnHostileWolf(angry: false)
+        } else {
+            spawnHostileWolf(angry: true)
+        }
+    }
+
+    private func spawnBunny() {
+        let node = makeBunny()
+        let x = Float.random(in: minX...maxX)
+        node.position = SCNVector3(x, 0, spawnZ)
+        scene.rootNode.addChildNode(node)
+        let speed = Double.random(in: 4.0...6.0)
+        let move = SCNAction.move(to: SCNVector3(x, 0, maxZ + 4), duration: speed)
+        move.timingMode = .linear
+        node.runAction(SCNAction.sequence([move, .removeFromParentNode()]))
+    }
+
+    private func killBunny(_ node: SCNNode) {
+        node.removeAllActions()
+        node.name = "dead"
+        food += 1
+        bunnyFeet += 1
+        floatText("+1🍖 +1🐾", color: .green)
+        node.runAction(SCNAction.sequence([
+            SCNAction.group([SCNAction.scale(to: 1.6, duration: 0.12),
+                             SCNAction.fadeOut(duration: 0.12)]),
+            SCNAction.removeFromParentNode()]))
+        updateHUD()
+    }
+
+    private func removeAllBunnies() {
+        for n in scene.rootNode.childNodes where n.name == "bunny" || n.name == "dead" {
             n.removeFromParentNode()
         }
     }
 
-    private func killAnimal(_ node: SCNNode) {
-        let isWolf = node.name == "wolf"
-        node.removeAllActions()
-        node.name = "dead"
-        food += isWolf ? 2 : 1
-        floatText(isWolf ? "+2🍖" : "+1🍖", color: .green)
-        node.runAction(SCNAction.sequence([
-            SCNAction.group([SCNAction.scale(to: 1.6, duration: 0.12),
-                             SCNAction.fadeOut(duration: 0.12)]),
-            SCNAction.removeFromParentNode()
-        ]))
-        updateHUD()
-    }
-
     private func endDay() {
         scene.rootNode.removeAction(forKey: "daySpawn")
-        removeAllAnimals()
+        removeAllBunnies()
+        merchantNode?.isHidden = true
         startNight()
     }
 
@@ -899,24 +1089,21 @@ final class GameWorld: NSObject {
 
     private func startNight() {
         phase = .night
-        phaseTimeRemaining = nightDuration
+        phaseTimeRemaining = config.nightDuration
         campfireAoeAccumulator = 0
         applyNightLighting()
-
         if food > 0 {
             food -= 1
-            flashBanner("🌙 Night \(day) — you eat to survive", color: .white)
+            flashBanner("🌙 Night \(day)", color: .white)
         } else {
-            changeHealth(-1)
-            flashBanner("🌙 Night \(day) — STARVING!", color: .red)
+            flashBanner("🌙 Night \(day) — no food!", color: .red)
         }
         updateHUD()
         guard phase == .night else { return }
-
         spawnRedGod()
+        scheduleNightSpawn()
         if isRaidNight(day) {
             flashBanner("⚠️ RAID! Demons are coming!", color: .orange)
-            scheduleDemonSpawn()
         }
     }
 
@@ -930,112 +1117,151 @@ final class GameWorld: NSObject {
         updateCampfireVisual()
     }
 
-    // MARK: - Enemies
-    private func spawnRedGod() {
+    private func scheduleNightSpawn() {
         guard phase == .night else { return }
-        let god = makeRedGod()
-        let x = Float.random(in: -8...8)
-        god.position = SCNVector3(x, 0, spawnZ)
-        scene.rootNode.addChildNode(god)
-        enemyHP[god] = redGodMaxHP
-        god.runAction(.repeatForever(.sequence([
-            .scale(to: 1.1, duration: 0.5),
-            .scale(to: 1.0, duration: 0.5)
-        ])), forKey: "pulse")
-        marchEnemy(god, speed: 2.6 * config.enemySpeedMultiplier)
+        let interval = isRaidNight(day) ? config.demonSpawn : (config.demonSpawn.lowerBound + 1.0)...(config.demonSpawn.upperBound + 2.0)
+        let wait = SCNAction.wait(duration: Double.random(in: interval))
+        let run = SCNAction.run { [weak self] _ in
+            self?.spawnNightCreature()
+            self?.scheduleNightSpawn()
+        }
+        scene.rootNode.runAction(SCNAction.sequence([wait, run]), forKey: "nightSpawn")
     }
 
-    private func scheduleDemonSpawn() {
-        guard phase == .night, isRaidNight(day) else { return }
-        let wait = SCNAction.wait(duration: Double.random(in: config.demonSpawn))
-        let run = SCNAction.run { [weak self] _ in
-            self?.spawnDemon()
-            self?.scheduleDemonSpawn()
+    private func spawnNightCreature() {
+        guard phase == .night else { return }
+        if isRaidNight(day) && Bool.random() {
+            spawnDemon()
+        } else {
+            spawnHostileWolf(angry: Int.random(in: 0..<100) < min(45, 15 + day / 4))
         }
-        scene.rootNode.runAction(SCNAction.sequence([wait, run]), forKey: "demonSpawn")
+    }
+
+    // MARK: - Enemies
+    private func spawnHostileWolf(angry: Bool) {
+        let node = makeWolf(angry: angry)
+        let x = Float.random(in: minX...maxX)
+        node.position = SCNVector3(x, 0, spawnZ)
+        scene.rootNode.addChildNode(node)
+        let speed = (angry ? 4.2 : 3.2) * config.enemySpeedMultiplier
+        let e = Enemy(node: node, hp: angry ? angryWolfHP : wolfHP, speed: speed,
+                      damage: angry ? angryWolfDamage : wolfDamage,
+                      kind: angry ? "angryWolf" : "wolf")
+        enemies.append(e)
     }
 
     private func spawnDemon() {
-        guard phase == .night else { return }
-        let demon = makeDemon()
+        let node = makeDemon()
         let x = Float.random(in: minX...maxX)
-        demon.position = SCNVector3(x, 0, spawnZ)
-        scene.rootNode.addChildNode(demon)
-        enemyHP[demon] = demonMaxHP
-        marchEnemy(demon, speed: Float.random(in: 3.2...4.2) * config.enemySpeedMultiplier)
+        node.position = SCNVector3(x, 0, spawnZ)
+        scene.rootNode.addChildNode(node)
+        let e = Enemy(node: node, hp: config.demonHP, speed: 3.6 * config.enemySpeedMultiplier,
+                      damage: demonDamage, kind: "demon")
+        enemies.append(e)
     }
 
-    private func marchEnemy(_ node: SCNNode, speed: Float) {
-        let from = node.position
-        let target = SCNVector3(from.x * 0.3, 0, frontZ)
-        let dx = target.x - from.x
-        let dz = target.z - from.z
-        let dist = max(1, sqrt(dx * dx + dz * dz))
-        let move = SCNAction.move(to: target, duration: TimeInterval(dist / speed))
-        move.timingMode = .linear
-        let strike = SCNAction.run { [weak self] n in self?.enemyReachesHouse(n) }
-        node.runAction(SCNAction.sequence([move, strike]), forKey: "march")
+    private func spawnRedGod() {
+        guard phase == .night else { return }
+        let node = makeRedGod()
+        let x = Float.random(in: -8...8)
+        node.position = SCNVector3(x, 0, spawnZ)
+        scene.rootNode.addChildNode(node)
+        node.runAction(.repeatForever(.sequence([
+            .scale(to: 1.08, duration: 0.5), .scale(to: 1.0, duration: 0.5)])), forKey: "pulse")
+        let e = Enemy(node: node, hp: config.redGodHP, speed: 2.4 * config.enemySpeedMultiplier,
+                      damage: redGodDamage, kind: "redgod")
+        enemies.append(e)
     }
 
-    private func hitEnemy(_ node: SCNNode) {
-        guard let hp = enemyHP[node] else { return }
-        let newHP = hp - attackPower
-        enemyHP[node] = newHP
-        node.runAction(SCNAction.sequence([
+    private func enemy(for node: SCNNode) -> Enemy? {
+        enemies.first { $0.node === node }
+    }
+
+    private func hitEnemy(_ e: Enemy) {
+        e.hp -= attackPower
+        e.node.runAction(SCNAction.sequence([
             SCNAction.scale(to: 0.85, duration: 0.05),
-            SCNAction.scale(to: 1.0, duration: 0.05)
-        ]))
-        if newHP <= 0 { killEnemy(node, byPlayer: true) }
+            SCNAction.scale(to: 1.0, duration: 0.05)]))
+        if e.hp <= 0 { defeatEnemy(e, byPlayer: true) }
     }
 
-    private func killEnemy(_ node: SCNNode, byPlayer: Bool) {
-        guard enemyHP[node] != nil else { return }
-        enemyHP[node] = nil
-        let isRedGod = node.name == "redgod"
-        node.removeAllActions()
-        node.name = "dead"
-
-        if isRedGod {
+    private func defeatEnemy(_ e: Enemy, byPlayer: Bool) {
+        guard let idx = enemies.firstIndex(where: { $0 === e }) else { return }
+        enemies.remove(at: idx)
+        e.node.removeAllActions()
+        e.node.name = "dead"
+        if e.kind == "redgod" {
             floatText("REPELLED!", color: .green)
-            if phase == .night {
-                scene.rootNode.runAction(SCNAction.sequence([
-                    SCNAction.wait(duration: config.redGodRespawnDelay),
-                    SCNAction.run { [weak self] _ in self?.spawnRedGod() }
-                ]))
-            }
+            scheduleRedGodRespawn()
         } else if byPlayer {
             food += 1
             floatText("+1🍖", color: .green)
             updateHUD()
         }
-        node.runAction(SCNAction.sequence([
+        e.node.runAction(SCNAction.sequence([
             SCNAction.group([SCNAction.scale(to: 1.6, duration: 0.18),
                              SCNAction.fadeOut(duration: 0.18)]),
-            SCNAction.removeFromParentNode()
-        ]))
+            SCNAction.removeFromParentNode()]))
     }
 
-    private func enemyReachesHouse(_ node: SCNNode) {
-        guard enemyHP[node] != nil, phase == .night else { return }
-        let isRedGod = node.name == "redgod"
-        enemyHP[node] = nil
-        node.removeAllActions()
-        changeHealth(-1)
-        floatText("BREACH!", color: .red)
-        node.removeFromParentNode()
-        if isRedGod && phase == .night {
-            scene.rootNode.runAction(SCNAction.sequence([
-                SCNAction.wait(duration: config.redGodRespawnDelay),
-                SCNAction.run { [weak self] _ in self?.spawnRedGod() }
-            ]))
+    private func scheduleRedGodRespawn() {
+        guard phase == .night else { return }
+        scene.rootNode.runAction(SCNAction.sequence([
+            SCNAction.wait(duration: config.redGodRespawnDelay),
+            SCNAction.run { [weak self] _ in self?.spawnRedGod() }]))
+    }
+
+    private func enemyAttacksPlayer(_ e: Enemy) {
+        let isWolf = e.kind == "wolf" || e.kind == "angryWolf"
+        var dmg = Float(e.damage) * config.damageTaken
+        if isWolf && hasWolfCover { dmg *= 0.5 }
+        changeLives(-Int(dmg.rounded()))
+        // knock the attacker away / remove it
+        if e.kind == "redgod" {
+            defeatEnemyToRespawn(e)
+        } else {
+            removeEnemyNode(e)
         }
     }
 
+    private func defeatEnemyToRespawn(_ e: Enemy) {
+        guard let idx = enemies.firstIndex(where: { $0 === e }) else { return }
+        enemies.remove(at: idx)
+        e.node.removeAllActions()
+        e.node.removeFromParentNode()
+        scheduleRedGodRespawn()
+    }
+
+    private func removeEnemyNode(_ e: Enemy) {
+        guard let idx = enemies.firstIndex(where: { $0 === e }) else { return }
+        enemies.remove(at: idx)
+        e.node.removeAllActions()
+        e.node.removeFromParentNode()
+    }
+
     private func clearEnemies() {
-        scene.rootNode.removeAction(forKey: "demonSpawn")
-        for (node, _) in enemyHP { node.removeFromParentNode() }
-        enemyHP.removeAll()
+        scene.rootNode.removeAction(forKey: "nightSpawn")
+        for e in enemies { e.node.removeFromParentNode() }
+        enemies.removeAll()
         for n in scene.rootNode.childNodes where n.name == "dead" { n.removeFromParentNode() }
+    }
+
+    // MARK: - Enemy AI (chase the player)
+    private func updateEnemies(_ dt: TimeInterval) {
+        let p = playerNode.position
+        for e in enemies {
+            let pos = e.node.position
+            let dx = p.x - pos.x
+            let dz = p.z - pos.z
+            let dist = sqrt(dx * dx + dz * dz)
+            if dist <= attackRange {
+                enemyAttacksPlayer(e)
+                continue
+            }
+            let step = e.speed * Float(dt)
+            e.node.position = SCNVector3(pos.x + dx / dist * step, pos.y, pos.z + dz / dist * step)
+            e.node.eulerAngles.y = atan2(dx, dz)
+        }
     }
 
     private func campfireTick(_ dt: TimeInterval) {
@@ -1044,60 +1270,71 @@ final class GameWorld: NSObject {
         guard campfireAoeAccumulator >= 1.0 else { return }
         campfireAoeAccumulator = 0
         let radius = 3.0 + Float(campfireLevel) * 1.3
-        for (node, _) in enemyHP {
-            if xzDistance(node.position, fire.position) <= radius {
-                hitEnemyFromFire(node)
-            }
+        for e in enemies where xzDistance(e.node.position, fire.position) <= radius {
+            e.hp -= config.campfireDamage
+            if e.hp <= 0 { defeatEnemy(e, byPlayer: false) }
         }
     }
 
-    private func hitEnemyFromFire(_ node: SCNNode) {
-        guard let hp = enemyHP[node] else { return }
-        let newHP = hp - config.campfireDamage
-        enemyHP[node] = newHP
-        if newHP <= 0 { killEnemy(node, byPlayer: false) }
+    private func hungerTick(_ dt: TimeInterval) {
+        guard food <= 0 else { hungerAccumulator = 0; return }
+        hungerAccumulator += dt
+        if hungerAccumulator >= 3.0 {
+            hungerAccumulator = 0
+            floatText("Starving!", color: .red)
+            changeLives(-5)
+        }
     }
 
     private func endNight() {
         clearEnemies()
-        if day >= maxDays {
-            win()
-            return
-        }
+        if day >= maxDays { win(); return }
         day += 1
         startDay()
     }
 
-    // MARK: - Trees / wood
+    // MARK: - Trees / rocks
+    private func gatherBonus() -> Int { hasBag ? 1 : 0 }
+
     private func chopTree(_ tree: SCNNode) {
         guard let remaining = treeChops[tree], remaining > 0 else { return }
-        wood += 1
+        let gain = 1 + (hasAxe ? 1 : 0) + gatherBonus()
+        wood += gain
         let left = remaining - 1
         treeChops[tree] = left
-        floatText("+1🪵", color: SKColor(red: 0.8, green: 0.6, blue: 0.3, alpha: 1))
+        floatText("+\(gain)🪵", color: SKColor(red: 0.8, green: 0.6, blue: 0.3, alpha: 1))
         tree.runAction(SCNAction.sequence([
             SCNAction.rotateBy(x: 0, y: 0, z: 0.12, duration: 0.05),
-            SCNAction.rotateBy(x: 0, y: 0, z: -0.12, duration: 0.05)
-        ]))
+            SCNAction.rotateBy(x: 0, y: 0, z: -0.12, duration: 0.05)]))
         updateHUD()
-        if left <= 0 { fellTree(tree) }
+        if left <= 0 { depleteResource(tree, regrowTo: 4, dict: \.treeChops) }
     }
 
-    private func fellTree(_ tree: SCNNode) {
-        tree.runAction(SCNAction.sequence([
-            SCNAction.group([SCNAction.scale(to: 0.05, duration: 0.3),
-                             SCNAction.rotateBy(x: 0.6, y: 0, z: 0, duration: 0.3)]),
-            SCNAction.run { n in
-                n.isHidden = true
-            },
+    private func mineRock(_ rock: SCNNode) {
+        guard let remaining = rockMetal[rock], remaining > 0 else { return }
+        let gain = 1 + gatherBonus()
+        metal += gain
+        let left = remaining - 1
+        rockMetal[rock] = left
+        floatText("+\(gain)🔩", color: SKColor(white: 0.85, alpha: 1))
+        rock.runAction(SCNAction.sequence([
+            SCNAction.rotateBy(x: 0.08, y: 0, z: 0, duration: 0.05),
+            SCNAction.rotateBy(x: -0.08, y: 0, z: 0, duration: 0.05)]))
+        updateHUD()
+        if left <= 0 { depleteResource(rock, regrowTo: 4, dict: \.rockMetal) }
+    }
+
+    private func depleteResource(_ node: SCNNode, regrowTo: Int,
+                                 dict: ReferenceWritableKeyPath<GameWorld, [SCNNode: Int]>) {
+        node.runAction(SCNAction.sequence([
+            SCNAction.scale(to: 0.05, duration: 0.3),
+            SCNAction.run { n in n.isHidden = true },
             SCNAction.wait(duration: 18.0),
             SCNAction.run { [weak self] n in
                 n.isHidden = false
                 n.scale = SCNVector3(1, 1, 1)
-                n.eulerAngles = SCNVector3Zero
-                self?.treeChops[n] = 4
-            }
-        ]))
+                self?[keyPath: dict][n] = regrowTo
+            }]))
     }
 
     private func regrowAllTrees() {
@@ -1110,6 +1347,96 @@ final class GameWorld: NSObject {
         }
     }
 
+    private func regrowAllRocks() {
+        for (rock, _) in rockMetal {
+            rock.removeAllActions()
+            rock.isHidden = false
+            rock.scale = SCNVector3(1, 1, 1)
+            rockMetal[rock] = 4
+        }
+    }
+
+    // MARK: - Kids / treasures
+    private func rescueKid(_ kid: SCNNode) {
+        guard let idx = kidNodes.firstIndex(of: kid) else { return }
+        kidNodes.remove(at: idx)
+        kidsSaved += 1
+        changeLives(20)
+        flashBanner("🧒 Kid saved! (\(kidsSaved)/4)", color: .green)
+        kid.removeAllActions()
+        kid.childNode(withName: "marker", recursively: false)?.removeFromParentNode()
+        kid.runAction(SCNAction.sequence([
+            SCNAction.move(to: SCNVector3(0, 0, 12), duration: 1.2),
+            SCNAction.fadeOut(duration: 0.3),
+            SCNAction.removeFromParentNode()]))
+        updateHUD()
+    }
+
+    private func openTreasure(_ chest: SCNNode) {
+        guard let idx = treasureNodes.firstIndex(of: chest) else { return }
+        treasureNodes.remove(at: idx)
+        chest.childNode(withName: "marker", recursively: false)?.removeFromParentNode()
+        grantTreasureReward()
+        chest.runAction(SCNAction.sequence([
+            SCNAction.group([SCNAction.scale(to: 1.4, duration: 0.2),
+                             SCNAction.fadeOut(duration: 0.3)]),
+            SCNAction.removeFromParentNode()]))
+    }
+
+    private func grantTreasureReward() {
+        // Prefer giving an unowned tool; otherwise resources.
+        var options: [() -> Void] = []
+        if !hasKatana { options.append { self.hasKatana = true; self.attackPower += 2; self.flashBanner("💰 Found a Katana! +2 atk", color: .yellow) } }
+        if !hasAxe { options.append { self.hasAxe = true; self.flashBanner("💰 Found an Axe!", color: .yellow) } }
+        if !hasBag { options.append { self.hasBag = true; self.flashBanner("💰 Found a Bag!", color: .yellow) } }
+        if options.isEmpty {
+            let r = Int.random(in: 0..<4)
+            switch r {
+            case 0: food += 6; flashBanner("💰 +6 🍖", color: .yellow)
+            case 1: wood += 6; flashBanner("💰 +6 🪵", color: .yellow)
+            case 2: metal += 4; flashBanner("💰 +4 🔩", color: .yellow)
+            default: changeLives(25); flashBanner("💰 +25 ❤️", color: .yellow)
+            }
+        } else {
+            options.randomElement()?()
+        }
+        updateHUD()
+        updateCraftLabels()
+    }
+
+    private func resetKidsAndTreasures() {
+        // Rebuild kids
+        for k in kidNodes { k.removeFromParentNode() }
+        kidNodes.removeAll()
+        for n in scene.rootNode.childNodes where n.name == "kid" { n.removeFromParentNode() }
+        buildKids()
+        // Rebuild treasures
+        for t in treasureNodes { t.removeFromParentNode() }
+        treasureNodes.removeAll()
+        for n in scene.rootNode.childNodes where n.name == "treasure" { n.removeFromParentNode() }
+        buildTreasures()
+    }
+
+    // MARK: - Merchant
+    private func tradeWithMerchant() {
+        if !hasWolfCover {
+            if bunnyFeet >= 1 {
+                bunnyFeet -= 1
+                hasWolfCover = true
+                flashBanner("🧥 Wolf cover! Wolf bites halved", color: .green)
+            } else {
+                floatText("Trader wants 1🐾 bunny foot", color: .white)
+            }
+        } else if bunnyFeet >= 2 {
+            bunnyFeet -= 2
+            metal += 2
+            floatText("Traded 2🐾 → +2🔩", color: .green)
+        } else {
+            floatText("Trader: bring me 🐾 feet", color: .white)
+        }
+        updateHUD()
+    }
+
     // MARK: - Campfire
     private func updateCampfireVisual() {
         let s = 0.7 + Float(campfireLevel) * 0.28
@@ -1117,28 +1444,23 @@ final class GameWorld: NSObject {
         let base: CGFloat = phase == .night ? 350 : 120
         campLight?.intensity = base + CGFloat(campfireLevel) * 220
         campLight?.attenuationEndDistance = CGFloat(8 + campfireLevel * 3)
+        applyWorldScale()
+        updateCampfireBar()
     }
 
     private func feedCampfire() {
-        if campfireLevel >= maxCampfireLevel {
-            floatText("Fire maxed!", color: .orange)
-            return
-        }
+        if campfireLevel >= maxCampfireLevel { floatText("Fire maxed!", color: .orange); return }
         let cost = campfireLevel * 4
         if wood >= cost {
             wood -= cost
             campfireLevel += 1
             updateCampfireVisual()
             floatText("🔥 Fire Lv \(campfireLevel)!", color: .orange)
-            if let fire = campfireNode {
-                fire.runAction(SCNAction.sequence([
-                    SCNAction.scale(to: 1.2, duration: 0.12),
-                    SCNAction.scale(to: 1.0, duration: 0.12)
-                ]))
-            }
+            campfireNode?.runAction(SCNAction.sequence([
+                SCNAction.scale(to: 1.2, duration: 0.12), SCNAction.scale(to: 1.0, duration: 0.12)]))
             updateHUD()
         } else {
-            floatText("Need \(cost)🪵 (lvl up)", color: .red)
+            floatText("Need \(cost)🪵", color: .red)
         }
     }
 
@@ -1156,88 +1478,173 @@ final class GameWorld: NSObject {
         craftMenu.isHidden = true
     }
 
-    private func craftSpear() {
-        let cost = 10
-        if attackPower >= 4 { floatText("Spear maxed!", color: .orange); return }
-        if wood >= cost {
-            wood -= cost
-            attackPower += 1
-            floatText("🗡 Attack \(attackPower)!", color: .green)
+    private func canAfford(woodCost: Int, metalCost: Int) -> Bool {
+        if wood >= woodCost && metal >= metalCost {
+            wood -= woodCost; metal -= metalCost
+            updateHUD()
+            return true
+        }
+        floatText("Need \(woodCost)🪵 \(metalCost)🔩", color: .red)
+        return false
+    }
+
+    private func craftKatana() {
+        if hasKatana { return }
+        if canAfford(woodCost: 6, metalCost: 5) {
+            hasKatana = true; attackPower += 2
+            floatText("🗡 Katana! atk \(attackPower)", color: .green)
             updateHUD(); updateCraftLabels()
-        } else {
-            floatText("Need \(cost)🪵", color: .red)
         }
     }
 
-    private func craftReinforce() {
-        let cost = 8
-        if wood >= cost {
-            wood -= cost
-            maxHealth = min(8, maxHealth + 1)
-            health = maxHealth
-            floatText("🛡 House reinforced!", color: .green)
-            updateHUD(); updateCraftLabels()
-        } else {
-            floatText("Need \(cost)🪵", color: .red)
+    private func craftAxe() {
+        if hasAxe { return }
+        if canAfford(woodCost: 4, metalCost: 3) {
+            hasAxe = true
+            floatText("🪓 Axe crafted!", color: .green)
+            updateCraftLabels()
         }
     }
 
-    // MARK: - Health / win / lose
-    private func changeHealth(_ delta: Int) {
-        health = min(maxHealth, health + delta)
+    private func craftBag() {
+        if hasBag { return }
+        if canAfford(woodCost: 5, metalCost: 2) {
+            hasBag = true
+            floatText("🎒 Bag crafted!", color: .green)
+            updateCraftLabels()
+        }
+    }
+
+    private func craftBed() {
+        if hasBed { return }
+        if canAfford(woodCost: 10, metalCost: 4) {
+            hasBed = true
+            placeBed()
+            floatText("🛏 Bed built by the house", color: .green)
+            updateCraftLabels()
+        }
+    }
+
+    private func placeBed() {
+        let bed = SCNNode()
+        bed.name = "bed"
+        let frame = SCNBox(width: 1.2, height: 0.3, length: 2.2, chamferRadius: 0.05)
+        frame.firstMaterial?.diffuse.contents = UIColor(red: 0.5, green: 0.33, blue: 0.18, alpha: 1)
+        let frameNode = SCNNode(geometry: frame)
+        frameNode.position = SCNVector3(0, 0.3, 0)
+        bed.addChildNode(frameNode)
+        let mattress = SCNBox(width: 1.1, height: 0.25, length: 1.6, chamferRadius: 0.1)
+        mattress.firstMaterial?.diffuse.contents = UIColor(red: 0.9, green: 0.9, blue: 0.95, alpha: 1)
+        let mNode = SCNNode(geometry: mattress)
+        mNode.position = SCNVector3(0, 0.55, 0.2)
+        bed.addChildNode(mNode)
+        let pillow = SCNBox(width: 0.9, height: 0.2, length: 0.4, chamferRadius: 0.08)
+        pillow.firstMaterial?.diffuse.contents = UIColor.white
+        let pNode = SCNNode(geometry: pillow)
+        pNode.position = SCNVector3(0, 0.6, -0.7)
+        bed.addChildNode(pNode)
+        bed.position = SCNVector3(-2.5, 0, 9.5)
+        scene.rootNode.addChildNode(bed)
+        bedNode = bed
+    }
+
+    private func useBed() {
+        if bedUsedToday { floatText("Already rested today", color: .white); return }
+        bedUsedToday = true
+        changeLives(30)
+        floatText("🛏 Rested +30 ❤️", color: .green)
+    }
+
+    private func craftMap() {
+        if hasMap { return }
+        if canAfford(woodCost: 6, metalCost: 2) {
+            hasMap = true
+            addMapMarkers()
+            floatText("🗺 Map reveals kids & treasure", color: .green)
+            updateCraftLabels()
+        }
+    }
+
+    private func addMapMarkers() {
+        for kid in kidNodes { addMarker(to: kid, color: .green, height: 2.2) }
+        for chest in treasureNodes { addMarker(to: chest, color: .yellow, height: 1.4) }
+    }
+
+    private func addMarker(to node: SCNNode, color: UIColor, height: Float) {
+        if node.childNode(withName: "marker", recursively: false) != nil { return }
+        let cone = SCNCone(topRadius: 0, bottomRadius: 0.3, height: 0.6)
+        let mat = SCNMaterial()
+        mat.diffuse.contents = color
+        mat.emission.contents = color
+        cone.materials = [mat]
+        let marker = SCNNode(geometry: cone)
+        marker.name = "marker"
+        marker.eulerAngles.x = Float.pi
+        marker.position = SCNVector3(0, height + 1.0, 0)
+        marker.runAction(.repeatForever(.sequence([
+            .moveBy(x: 0, y: 0.3, z: 0, duration: 0.6),
+            .moveBy(x: 0, y: -0.3, z: 0, duration: 0.6)])))
+        node.addChildNode(marker)
+    }
+
+    // MARK: - Lives / win / lose
+    private func changeLives(_ delta: Int) {
+        lives = min(maxLives, lives + delta)
         if delta < 0 { flashDamage() }
         updateHUD()
-        if health <= 0 { gameOver() }
+        if lives <= 0 { gameOver() }
     }
 
     private func gameOver() {
         guard phase != .gameOver else { return }
         phase = .gameOver
         scene.rootNode.removeAction(forKey: "daySpawn")
-        removeAllAnimals()
+        removeAllBunnies()
         clearEnemies()
         closeCraftMenu()
         setJoystickVisible(false)
         updateHUD()
         overlay.isHidden = false
         difficultyButtons.isHidden = true
+        authorLabel.isHidden = true
         overlayTitle.fontSize = 38
         overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 + 40)
         overlayTitle.text = "YOU DIED"
         overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
-        overlaySub.text = "The house fell on day \(day) (\(config.name)).\n\nTap to choose difficulty."
+        overlaySub.text = "Fell on day \(day) (\(config.name)). Kids saved: \(kidsSaved)/4.\n\nTap to choose difficulty."
     }
 
     private func win() {
         phase = .win
+        clearEnemies()
         setJoystickVisible(false)
         updateHUD()
         overlay.isHidden = false
         difficultyButtons.isHidden = true
-        overlayTitle.fontSize = 38
+        authorLabel.isHidden = true
+        overlayTitle.fontSize = 36
         overlayTitle.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 + 40)
         overlayTitle.text = "YOU SURVIVED!"
+        let kidLine = kidsSaved >= 4 ? "All 4 kids saved! 🎉" : "Kids saved: \(kidsSaved)/4."
         overlaySub.position = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2 - 80)
-        overlaySub.text = "99 days on \(config.name)! The Red God is defeated.\n\nTap to play again."
+        overlaySub.text = "99 days on \(config.name)! \(kidLine)\n\nTap to play again."
     }
 
     // MARK: - HUD effects
     private func flashBanner(_ text: String, color: SKColor) {
         let banner = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         banner.text = text
-        banner.fontSize = 26
+        banner.fontSize = 24
         banner.fontColor = color
-        banner.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.64)
+        banner.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.66)
         banner.zPosition = 150
         banner.setScale(0.6)
         hud.addChild(banner)
         banner.run(SKAction.sequence([
-            SKAction.group([SKAction.scale(to: 1.0, duration: 0.25),
-                            SKAction.fadeIn(withDuration: 0.2)]),
+            SKAction.group([SKAction.scale(to: 1.0, duration: 0.25), SKAction.fadeIn(withDuration: 0.2)]),
             SKAction.wait(forDuration: 1.0),
             SKAction.fadeOut(withDuration: 0.4),
-            SKAction.removeFromParent()
-        ]))
+            SKAction.removeFromParent()]))
     }
 
     private func floatText(_ text: String, color: SKColor) {
@@ -1245,14 +1652,12 @@ final class GameWorld: NSObject {
         label.text = text
         label.fontSize = 22
         label.fontColor = color
-        label.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.42)
+        label.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.44)
         label.zPosition = 120
         hud.addChild(label)
         label.run(SKAction.sequence([
-            SKAction.group([SKAction.moveBy(x: 0, y: 60, duration: 0.6),
-                            SKAction.fadeOut(withDuration: 0.6)]),
-            SKAction.removeFromParent()
-        ]))
+            SKAction.group([SKAction.moveBy(x: 0, y: 60, duration: 0.6), SKAction.fadeOut(withDuration: 0.6)]),
+            SKAction.removeFromParent()]))
     }
 
     private func flashDamage() {
@@ -1260,8 +1665,7 @@ final class GameWorld: NSObject {
         damageFlash?.alpha = 0
         damageFlash?.run(SKAction.sequence([
             SKAction.fadeAlpha(to: 0.45, duration: 0.06),
-            SKAction.fadeAlpha(to: 0, duration: 0.25)
-        ]))
+            SKAction.fadeAlpha(to: 0, duration: 0.25)]))
     }
 
     // MARK: - Game loop
@@ -1276,17 +1680,15 @@ final class GameWorld: NSObject {
         let now = Date()
         let dt = now.timeIntervalSince(lastTick)
         lastTick = now
-
         guard phase == .day || phase == .night else { return }
-
         updatePlayer(dt)
+        updateEnemies(dt)
         campfireTick(dt)
-
+        hungerTick(dt)
         phaseTimeRemaining -= dt
         updateHUD()
         if phaseTimeRemaining <= 0 {
-            if phase == .day { endDay() }
-            else if phase == .night { endNight() }
+            if phase == .day { endDay() } else if phase == .night { endNight() }
         }
     }
 
@@ -1315,22 +1717,13 @@ final class GameWorld: NSObject {
         var dx = p.x - joystickCenter.x
         var dy = p.y - joystickCenter.y
         let dist = hypot(dx, dy)
-        if dist > joystickRadius {
-            dx = dx / dist * joystickRadius
-            dy = dy / dist * joystickRadius
-        }
+        if dist > joystickRadius { dx = dx / dist * joystickRadius; dy = dy / dist * joystickRadius }
         joystickKnob.position = CGPoint(x: joystickCenter.x + dx, y: joystickCenter.y + dy)
         moveVec = CGVector(dx: dx / joystickRadius, dy: dy / joystickRadius)
     }
 
-    func joystickEnd() {
-        moveVec = .zero
-        resetJoystickKnob()
-    }
-
-    private func resetJoystickKnob() {
-        joystickKnob.position = joystickCenter
-    }
+    func joystickEnd() { moveVec = .zero; resetJoystickKnob() }
+    private func resetJoystickKnob() { joystickKnob.position = joystickCenter }
 
     func handleTap(at viewPoint: CGPoint, in view: SCNView) {
         switch phase {
@@ -1338,16 +1731,13 @@ final class GameWorld: NSObject {
             let hp = hud.convertPoint(fromView: viewPoint)
             for node in hud.nodes(at: hp) {
                 if let name = node.name, name.hasPrefix("diff_"),
-                   let raw = Int(name.dropFirst(5)),
-                   let diff = Difficulty(rawValue: raw) {
-                    startGame(diff)
-                    return
+                   let raw = Int(name.dropFirst(5)), let diff = Difficulty(rawValue: raw) {
+                    startGame(diff); return
                 }
             }
             return
         case .gameOver, .win:
-            showTitle()
-            return
+            showTitle(); return
         case .day, .night:
             break
         }
@@ -1356,8 +1746,11 @@ final class GameWorld: NSObject {
             let hp = hud.convertPoint(fromView: viewPoint)
             for node in hud.nodes(at: hp) {
                 switch node.name {
-                case "craft_spear": craftSpear(); return
-                case "craft_reinforce": craftReinforce(); return
+                case "craft_katana": craftKatana(); return
+                case "craft_axe": craftAxe(); return
+                case "craft_bag": craftBag(); return
+                case "craft_bed": craftBed(); return
+                case "craft_map": craftMap(); return
                 case "craft_close": closeCraftMenu(); return
                 default: break
                 }
@@ -1367,26 +1760,40 @@ final class GameWorld: NSObject {
 
         guard let target = gameNode(from: view.hitTest(viewPoint, options: nil)) else { return }
         switch target.name {
-        case "bunny", "wolf":
-            killAnimal(target)
-        case "redgod", "demon":
-            hitEnemy(target)
+        case "bunny":
+            killBunny(target)
+        case "wolf", "angryWolf", "demon", "redgod":
+            if let e = enemy(for: target) { hitEnemy(e) }
         case "tree":
-            if isNearPlayer(target) { chopTree(target) }
-            else { floatText("Too far from tree", color: .white) }
+            interactIfNear(target, "tree") { self.chopTree(target) }
+        case "rock":
+            interactIfNear(target, "rock") { self.mineRock(target) }
         case "campfire":
-            if isNearPlayer(target) { feedCampfire() }
-            else { floatText("Too far from fire", color: .white) }
+            interactIfNear(target, "fire") { self.feedCampfire() }
         case "crafttable":
-            if isNearPlayer(target) { openCraftMenu() }
-            else { floatText("Too far from table", color: .white) }
+            interactIfNear(target, "table") { self.openCraftMenu() }
+        case "merchant":
+            interactIfNear(target, "trader") { self.tradeWithMerchant() }
+        case "kid":
+            interactIfNear(target, "kid") { self.rescueKid(target) }
+        case "treasure":
+            interactIfNear(target, "treasure") { self.openTreasure(target) }
+        case "bed":
+            interactIfNear(target, "bed") { self.useBed() }
         default:
             break
         }
     }
 
+    private func interactIfNear(_ node: SCNNode, _ label: String, _ action: () -> Void) {
+        if isNearPlayer(node) { action() }
+        else { floatText("Too far from \(label)", color: .white) }
+    }
+
     private func gameNode(from hits: [SCNHitTestResult]) -> SCNNode? {
-        let names: Set<String> = ["bunny", "wolf", "redgod", "demon", "tree", "campfire", "crafttable"]
+        let names: Set<String> = ["bunny", "wolf", "angryWolf", "demon", "redgod",
+                                  "tree", "rock", "campfire", "crafttable",
+                                  "merchant", "kid", "treasure", "bed"]
         for hit in hits {
             var node: SCNNode? = hit.node
             while let cur = node {
