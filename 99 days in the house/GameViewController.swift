@@ -13,6 +13,9 @@ class GameViewController: UIViewController {
     private var scnView: SCNView!
     private var world: GameWorld?
 
+    // The single touch currently driving the movement joystick (if any).
+    private weak var joystickTouch: UITouch?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -20,8 +23,9 @@ class GameViewController: UIViewController {
         scnView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scnView.backgroundColor = .black
         scnView.antialiasingMode = .multisampling2X
-        scnView.isPlaying = true              // keep the render loop running
+        scnView.isPlaying = true
         scnView.rendersContinuously = true
+        scnView.isMultipleTouchEnabled = true
         view.addSubview(scnView)
     }
 
@@ -33,14 +37,42 @@ class GameViewController: UIViewController {
         scnView.scene = game.scene
         scnView.overlaySKScene = game.hud
         world = game
-
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-        scnView.addGestureRecognizer(tap)
     }
 
-    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
-        let point = gesture.location(in: scnView)
-        world?.handleTap(at: point, in: scnView)
+    // MARK: - Touch handling (joystick + taps)
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let world = world else { return }
+        for touch in touches {
+            let point = touch.location(in: scnView)
+            if joystickTouch == nil && world.joystickContains(viewPoint: point) {
+                joystickTouch = touch
+                world.joystickBegin(viewPoint: point)
+            } else {
+                world.handleTap(at: point, in: scnView)
+            }
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let world = world else { return }
+        for touch in touches where touch == joystickTouch {
+            world.joystickMove(viewPoint: touch.location(in: scnView))
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        endJoystickIfNeeded(touches)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        endJoystickIfNeeded(touches)
+    }
+
+    private func endJoystickIfNeeded(_ touches: Set<UITouch>) {
+        for touch in touches where touch == joystickTouch {
+            joystickTouch = nil
+            world?.joystickEnd()
+        }
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
