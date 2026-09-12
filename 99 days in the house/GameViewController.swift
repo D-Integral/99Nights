@@ -8,9 +8,22 @@
 import UIKit
 import SceneKit
 
+/// SCNView that opts out of the UIKit focus engine.
+///
+/// On iPad (and any setup with a keyboard/pointer), the focus engine treats
+/// SpriteKit overlay nodes as focus environments. When SpriteKit removes such a
+/// node during the SceneKit render pass (our floating texts / banners end with
+/// `SKAction.removeFromParent()`), it schedules a focus update in an invalid
+/// context and crashes with EXC_BAD_ACCESS in `_focusEnvironmentWillDisappear`.
+/// Making the hosting view non-focusable keeps the focus engine out of our
+/// SpriteKit overlay entirely and avoids the crash.
+final class GameSCNView: SCNView {
+    override var canBecomeFocused: Bool { false }
+}
+
 class GameViewController: UIViewController {
 
-    private var scnView: SCNView!
+    private var scnView: GameSCNView!
     private var world: GameWorld?
 
     // The single touch currently driving the movement joystick (if any).
@@ -19,7 +32,7 @@ class GameViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        scnView = SCNView(frame: view.bounds)
+        scnView = GameSCNView(frame: view.bounds)
         scnView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         scnView.backgroundColor = .black
         scnView.antialiasingMode = .multisampling2X
@@ -38,6 +51,9 @@ class GameViewController: UIViewController {
         scnView.overlaySKScene = game.hud
         world = game
     }
+
+    // MARK: - Focus engine opt-out
+    override func shouldUpdateFocus(in context: UIFocusUpdateContext) -> Bool { false }
 
     // MARK: - Touch handling (joystick + taps)
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

@@ -157,6 +157,13 @@ final class GameWorld: NSObject {
     private var timer: Timer?
     private var campfireAoeAccumulator: TimeInterval = 0
     private var hungerAccumulator: TimeInterval = 0
+    // Spawn/respawn/regrow scheduling driven from the main-thread game loop.
+    // (Never schedule game-state changes via SCNAction callbacks — those run on
+    // SceneKit's animation thread and would violate main-actor isolation.)
+    private var daySpawnTimer: TimeInterval = 0
+    private var nightSpawnTimer: TimeInterval = 0
+    private var redGodRespawnTimer: TimeInterval?
+    private var regrowTimers: [SCNNode: TimeInterval] = [:]
 
     // MARK: - 3D nodes
     private let cameraNode = SCNNode()
@@ -1011,7 +1018,7 @@ final class GameWorld: NSObject {
             merchantNode?.isHidden = true
         }
         updateHUD()
-        scheduleDaySpawn()
+        resetDaySpawnTimer()
     }
 
     private func applyDayLighting() {
@@ -1024,14 +1031,8 @@ final class GameWorld: NSObject {
         updateCampfireVisual()
     }
 
-    private func scheduleDaySpawn() {
-        guard phase == .day else { return }
-        let wait = SCNAction.wait(duration: Double.random(in: config.animalSpawn))
-        let run = SCNAction.run { [weak self] _ in
-            self?.spawnDayCreature()
-            self?.scheduleDaySpawn()
-        }
-        scene.rootNode.runAction(SCNAction.sequence([wait, run]), forKey: "daySpawn")
+    private func resetDaySpawnTimer() {
+        daySpawnTimer = Double.random(in: config.animalSpawn)
     }
 
     private func spawnDayCreature() {
@@ -1078,7 +1079,6 @@ final class GameWorld: NSObject {
     }
 
     private func endDay() {
-        scene.rootNode.removeAction(forKey: "daySpawn")
         removeAllBunnies()
         merchantNode?.isHidden = true
         startNight()
@@ -1100,8 +1100,9 @@ final class GameWorld: NSObject {
         }
         updateHUD()
         guard phase == .night else { return }
+        redGodRespawnTimer = nil
         spawnRedGod()
-        scheduleNightSpawn()
+        resetNightSpawnTimer()
         if isRaidNight(day) {
             flashBanner("⚠️ RAID! Demons are coming!", color: .orange)
         }
@@ -1117,15 +1118,9 @@ final class GameWorld: NSObject {
         updateCampfireVisual()
     }
 
-    private func scheduleNightSpawn() {
-        guard phase == .night else { return }
+    private func resetNightSpawnTimer() {
         let interval = isRaidNight(day) ? config.demonSpawn : (config.demonSpawn.lowerBound + 1.0)...(config.demonSpawn.upperBound + 2.0)
-        let wait = SCNAction.wait(duration: Double.random(in: interval))
-        let run = SCNAction.run { [weak self] _ in
-            self?.spawnNightCreature()
-            self?.scheduleNightSpawn()
-        }
-        scene.rootNode.runAction(SCNAction.sequence([wait, run]), forKey: "nightSpawn")
+        nightSpawnTimer = Double.random(in: interval)
     }
 
     private func spawnNightCreature() {
@@ -1206,9 +1201,7 @@ final class GameWorld: NSObject {
 
     private func scheduleRedGodRespawn() {
         guard phase == .night else { return }
-        scene.rootNode.runAction(SCNAction.sequence([
-            SCNAction.wait(duration: config.redGodRespawnDelay),
-            SCNAction.run { [weak self] _ in self?.spawnRedGod() }]))
+        redGodRespawnTimer = config.redGodRespawnDelay
     }
 
     private func enemyAttacksPlayer(_ e: Enemy) {
@@ -1240,7 +1233,7 @@ final class GameWorld: NSObject {
     }
 
     private func clearEnemies() {
-        scene.rootNode.removeAction(forKey: "nightSpawn")
+        redGodRespawnTimer = nil
         for e in enemies { e.node.removeFromParentNode() }
         enemies.removeAll()
         for n in scene.rootNode.childNodes where n.name == "dead" { n.removeFromParentNode() }
@@ -1307,7 +1300,7 @@ final class GameWorld: NSObject {
             SCNAction.rotateBy(x: 0, y: 0, z: 0.12, duration: 0.05),
             SCNAction.rotateBy(x: 0, y: 0, z: -0.12, duration: 0.05)]))
         updateHUD()
-        if left <= 0 { depleteResource(tree, regrowTo: 4, dict: \.treeChops) }
+        if left <= 0 { depleteResource(tree) }
     }
 
     private func mineRock(_ rock: SCNNode) {
@@ -1321,20 +1314,27 @@ final class GameWorld: NSObject {
             SCNAction.rotateBy(x: 0.08, y: 0, z: 0, duration: 0.05),
             SCNAction.rotateBy(x: -0.08, y: 0, z: 0, duration: 0.05)]))
         updateHUD()
-        if left <= 0 { depleteResource(rock, regrowTo: 4, dict: \.rockMetal) }
+        if left <= 0 { depleteResource(rock) }
     }
 
-    private func depleteResource(_ node: SCNNode, regrowTo: Int,
-                                 dict: ReferenceWritableKeyPath<GameWorld, [SCNNode: Int]>) {
+    private func depleteResource(_ node: SCNNode) {
+        // Only the visual shrink/hide runs via SCNAction (it touches the node,
+        // not game state). The 18s regrow is handled on the main game loop.
         node.runAction(SCNAction.sequence([
             SCNAction.scale(to: 0.05, duration: 0.3),
-            SCNAction.run { n in n.isHidden = true },
-            SCNAction.wait(duration: 18.0),
-            SCNAction.run { [weak self] n in
-                n.isHidden = false
-                n.scale = SCNVector3(1, 1, 1)
-                self?[keyPath: dict][n] = regrowTo
-            }]))
+            SCNAction.run { n in n.isHidden = true }]))
+        regrowTimers[node] = 18.0
+    }
+
+    private func restoreResource(_ node: SCNNode) {
+        node.isHidden = false
+        node.scale = SCNVector3(1, 1, 1)
+        if treeChops[node] != nil {
+            node.eulerAngles = SCNVector3Zero
+            treeChops[node] = 4
+        } else if rockMetal[node] != nil {
+            rockMetal[node] = 4
+        }
     }
 
     private func regrowAllTrees() {
@@ -1344,6 +1344,7 @@ final class GameWorld: NSObject {
             tree.scale = SCNVector3(1, 1, 1)
             tree.eulerAngles = SCNVector3Zero
             treeChops[tree] = 4
+            regrowTimers[tree] = nil
         }
     }
 
@@ -1353,6 +1354,7 @@ final class GameWorld: NSObject {
             rock.isHidden = false
             rock.scale = SCNVector3(1, 1, 1)
             rockMetal[rock] = 4
+            regrowTimers[rock] = nil
         }
     }
 
@@ -1598,7 +1600,6 @@ final class GameWorld: NSObject {
     private func gameOver() {
         guard phase != .gameOver else { return }
         phase = .gameOver
-        scene.rootNode.removeAction(forKey: "daySpawn")
         removeAllBunnies()
         clearEnemies()
         closeCraftMenu()
@@ -1683,12 +1684,52 @@ final class GameWorld: NSObject {
         guard phase == .day || phase == .night else { return }
         updatePlayer(dt)
         updateEnemies(dt)
+        updateSpawning(dt)
+        updateRegrow(dt)
         campfireTick(dt)
         hungerTick(dt)
         phaseTimeRemaining -= dt
         updateHUD()
         if phaseTimeRemaining <= 0 {
             if phase == .day { endDay() } else if phase == .night { endNight() }
+        }
+    }
+
+    private func updateSpawning(_ dt: TimeInterval) {
+        if phase == .day {
+            daySpawnTimer -= dt
+            if daySpawnTimer <= 0 {
+                spawnDayCreature()
+                resetDaySpawnTimer()
+            }
+        } else if phase == .night {
+            nightSpawnTimer -= dt
+            if nightSpawnTimer <= 0 {
+                spawnNightCreature()
+                resetNightSpawnTimer()
+            }
+            if var t = redGodRespawnTimer {
+                t -= dt
+                if t <= 0 {
+                    redGodRespawnTimer = nil
+                    spawnRedGod()
+                } else {
+                    redGodRespawnTimer = t
+                }
+            }
+        }
+    }
+
+    private func updateRegrow(_ dt: TimeInterval) {
+        guard !regrowTimers.isEmpty else { return }
+        for (node, time) in Array(regrowTimers) {
+            let nt = time - dt
+            if nt <= 0 {
+                regrowTimers[node] = nil
+                restoreResource(node)
+            } else {
+                regrowTimers[node] = nt
+            }
         }
     }
 
