@@ -1644,8 +1644,9 @@ final class GameWorld: NSObject {
         banner.run(SKAction.sequence([
             SKAction.group([SKAction.scale(to: 1.0, duration: 0.25), SKAction.fadeIn(withDuration: 0.2)]),
             SKAction.wait(forDuration: 1.0),
-            SKAction.fadeOut(withDuration: 0.4),
-            SKAction.removeFromParent()]))
+            SKAction.fadeOut(withDuration: 0.4)])) { [weak self] in
+            self?.removeOverlayNodeSafely(banner)
+        }
     }
 
     private func floatText(_ text: String, color: SKColor) {
@@ -1656,9 +1657,22 @@ final class GameWorld: NSObject {
         label.position = CGPoint(x: viewSize.width / 2, y: viewSize.height * 0.44)
         label.zPosition = 120
         hud.addChild(label)
-        label.run(SKAction.sequence([
-            SKAction.group([SKAction.moveBy(x: 0, y: 60, duration: 0.6), SKAction.fadeOut(withDuration: 0.6)]),
-            SKAction.removeFromParent()]))
+        label.run(SKAction.group([SKAction.moveBy(x: 0, y: 60, duration: 0.6),
+                                  SKAction.fadeOut(withDuration: 0.6)])) { [weak self] in
+            self?.removeOverlayNodeSafely(label)
+        }
+    }
+
+    /// Removes an overlay SpriteKit node on the main run loop.
+    ///
+    /// The HUD is an `overlaySKScene`, so its `SKAction`s are stepped during the
+    /// SceneKit render pass. Removing a node there runs outside a valid UIKit
+    /// CATransaction, and the focus engine's `_focusEnvironmentWillDisappear`
+    /// then asserts in `_performAfterCATransactionCommits...` (crash on iPad).
+    /// Deferring the removal to the next main run-loop turn gives it a valid
+    /// transaction context and avoids the crash.
+    private func removeOverlayNodeSafely(_ node: SKNode) {
+        DispatchQueue.main.async { node.removeFromParent() }
     }
 
     private func flashDamage() {
